@@ -1,12 +1,15 @@
 """婚礼宾客统计系统 — FastAPI 后端。
 
-宾客主数据存 data/guests.xlsx，桌子属性存 data/tables.csv，全局配置存 data/config.csv。
+数据存 data/wedding.db（SQLite）；宾客名单支持 xlsx 导入/导出。
 """
 
+from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
+from openpyxl import Workbook, load_workbook
 from pydantic import BaseModel, Field
 
 import storage
@@ -252,6 +255,138 @@ def move_guest(gid: int, body: MoveIn):
     result["moved"] = guest
     storage.save_guests(guests)
     return result
+
+
+# ---------- 宾客名单导入 / 导出（xlsx） ----------
+# 交换格式：姓名 | 配偶 | 子女1..N | 预计人数 | 确认人数 | 桌号
+# 家属名平铺为多列（第一位视为配偶，其余为子女），按预计人数-1 补足空位。
+
+EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _norm_cell(v) -> str:
+    """单元格转字符串；Excel 数字桌号 1.0 规整为 '1'。"""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
+
+
+def _cell_int(v) -> int | None:
+    s = _norm_cell(v)
+    try:
+        return int(float(s)) if s else None
+    except ValueError:
+        return None
+
+
+@app.get("/api/guests/export")
+def export_guests():
+    guests = storage.load_guests()
+    padded = []
+    for g in guests:
+        fam = [s.strip() for s in g["family_names"].split(",") if s.strip()]
+        fam += [""] * max(0, g["party_size"] - 1 - len(fam))  # 按人数补全空位
+        padded.append(fam)
+    # 至少保留 配偶+2子女 列，空名单导出也可当录入模板
+    max_family = max([len(f) for f in padded] + [3])
+    headers = ["姓名", "配偶"] + [f"子女{i}" for i in range(1, max_family)] + \
+              ["预计人数", "确认人数", "桌号"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "宾客名单"
+    ws.append(headers)
+    for g, fam in zip(guests, padded):
+        fam_cells = fam + [""] * (max_family - len(fam))
+        ws.append([g["name"], *fam_cells, g["party_size"], g["confirmed_size"], g["table_no"]])
+    for i in range(1, len(headers) + 1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = 12
+    ws.freeze_panes = "A2"
+    buf = BytesIO()
+    wb.save(buf)
+    return Response(buf.getvalue(), media_type=EXPORT_MIME, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote('宾客名单.xlsx')}",
+    })
+
+
+@app.post("/api/guests/import")
+async def import_guests(request: Request, mode: str = "append"):
+    """导入宾客名单。body 为 xlsx 原始字节；mode=append 追加 / replace 覆盖全部。"""
+    if mode not in ("append", "replace"):
+        raise HTTPException(400, "mode 必须是 append 或 replace")
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "请上传 xlsx 文件")
+    try:
+        ws = load_workbook(BytesIO(data), data_only=True).active
+    except Exception:
+        raise HTTPException(400, "无法解析文件，请上传 .xlsx 格式的 Excel 文件")
+
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None) or ()
+    col = {}
+    for i, h in enumerate(header):
+        name = str(h or "").strip()
+        if name:
+            col[name] = i
+    if "姓名" not in col:
+        raise HTTPException(400, "缺少「姓名」列（表头需含：姓名、配偶、子女N、预计人数、确认人数、桌号）")
+    family_cols = sorted(i for name, i in col.items() if name == "配偶" or name.startswith("子女"))
+
+    def cell(vals, name):
+        i = col.get(name)
+        return vals[i] if i is not None and i < len(vals) else None
+
+    guests = [] if mode == "replace" else storage.load_guests()
+    next_id = storage.next_guest_id(guests)
+    tables = storage.load_tables()
+    known_tables = {t["table_no"] for t in tables}
+    imported, skipped, unknown_tables = 0, 0, []
+
+    for row in rows:
+        if row is None or all(v is None or str(v).strip() == "" for v in row):
+            continue  # 整行空白直接忽略
+        name = _norm_cell(cell(row, "姓名"))
+        if not name:
+            skipped += 1
+            continue
+        family = [_norm_cell(row[i]) for i in family_cols
+                  if i < len(row) and _norm_cell(row[i])]
+        party_raw = _cell_int(cell(row, "预计人数"))
+        # 人数缺省按 本人+家属数 推断；显式填写时不小于已列出的家属数
+        party = max(party_raw or 0, 1 + len(family)) if (party_raw or family) else 1
+        conf_raw = _cell_int(cell(row, "确认人数"))
+        confirmed = min(conf_raw, party) if conf_raw is not None else party
+        table_no = _norm_cell(cell(row, "桌号"))
+        if table_no and table_no not in known_tables:
+            unknown_tables.append(table_no)
+            known_tables.add(table_no)
+        guests.append({
+            "id": next_id,
+            "name": name,
+            "party_size": party,
+            "confirmed_size": max(0, confirmed),
+            "family_names": ",".join(family),
+            "table_no": table_no,
+            "invite_status": "未发送",
+            "confirm_status": "待确认",
+            "note": "",
+        })
+        next_id += 1
+        imported += 1
+
+    if imported == 0 and skipped == 0:
+        raise HTTPException(400, "文件里没有可导入的数据行")
+    # 名单里出现的新桌号自动建桌（容量用全局默认，位置走自动布局）
+    for no in unknown_tables:
+        tables.append({"table_no": no, "label": "", "capacity": None, "x": None, "y": None})
+    if unknown_tables:
+        storage.save_tables(tables)
+    storage.save_guests(guests)
+    return {"imported": imported, "skipped": skipped,
+            "created_tables": unknown_tables, "mode": mode}
 
 
 # ---------- 桌子 ----------
