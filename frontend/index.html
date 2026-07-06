@@ -80,13 +80,13 @@
   .floor-layout { display: flex; gap: 14px; align-items: flex-start; }
   #venue-box { flex: 1; min-width: 0; }
   #venue {
-    position: relative; background: #fffdf9;
+    position: relative; background: #fffdf9; margin: 0 auto;
     border: 2px solid #d8c9b4; border-radius: 6px;
     box-shadow: var(--shadow); overflow: hidden;
     background-image: linear-gradient(#f1e9dc 1px, transparent 1px),
                       linear-gradient(90deg, #f1e9dc 1px, transparent 1px);
   }
-  .venue-scale-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .venue-scale-note { color: var(--muted); font-size: 12px; margin-top: 6px; text-align: center; }
   .stage {
     position: absolute; background: linear-gradient(180deg, #e8d3a0, #dfc188);
     border: 1px solid #c9a95f; border-radius: 0 0 10px 10px;
@@ -205,6 +205,11 @@
     <div class="toolbar">
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
       <span class="hint" id="venue-info"></span>
+      <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
+        <input type="range" id="zoom-range" min="50" max="250" value="100" step="10"
+               style="width:110px;padding:0" oninput="setZoom(this.value)">
+        <span id="zoom-val">100%</span>
+      </label>
       <div class="spacer"></div>
       <span class="hint">💡 拖动圆桌调整摆位；点击圆桌看单桌详情；把右侧宾客名牌拖到桌上即可入座。</span>
     </div>
@@ -447,12 +452,25 @@ function autoLayout(tables, cfg) {
   return pos;
 }
 
+let zoomFactor = 1;
+function setZoom(v) {
+  zoomFactor = v / 100;
+  document.getElementById('zoom-val').textContent = v + '%';
+  if (state) renderFloor();
+}
+
 function renderFloor() {
   const cfg = state.config;
   const venue = document.getElementById('venue');
   const box = document.getElementById('venue-box');
-  const scale = Math.max(10, (box.clientWidth || 800) / cfg.venue_width); // px / 米
+  // 默认「适应窗口」：宽、高双向受限，整个会场一屏可见；缩放滑块在此基础上放大缩小
+  const boxW = box.clientWidth || 800;
+  const boxTop = box.getBoundingClientRect().top;
+  const availH = Math.max(320, window.innerHeight - Math.max(140, boxTop) - 36);
+  const fit = Math.min(boxW / cfg.venue_width, availH / cfg.venue_depth);
+  const scale = Math.max(6, fit * zoomFactor); // px / 米
   const px = m => m * scale;
+  venue.style.width = px(cfg.venue_width) + 'px';
   venue.style.height = px(cfg.venue_depth) + 'px';
   venue.style.backgroundSize = `${px(1)}px ${px(1)}px`;  // 1米网格
 
