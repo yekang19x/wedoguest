@@ -286,6 +286,10 @@
           <label>桌子直径（米）</label>
           <input type="number" id="cfg-table-diameter" min="0.5" step="0.1">
         </div>
+        <div class="form-row">
+          <label>桌子间距（米，自动排列时的桌边间隙）</label>
+          <input type="number" id="cfg-table-gap" min="0" step="0.1">
+        </div>
       </div>
       <span class="desc" style="display:block;margin-bottom:14px">平面图按以上尺寸等比例绘制，圆桌大小随桌径实时缩放。</span>
       <button class="btn" onclick="saveConfig()">保存设置</button>
@@ -442,7 +446,10 @@ function tableNoOrder(no) {
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), runway = runwayRect(cfg);
-  const margin = rad + 0.6, step = D + 1.2;
+  const margin = rad + 0.6, step = D + cfg.table_gap;
+  // 与已摆放桌的最小圆心距：保证不贴脸即可（网格美观间距由 step 保证）；
+  // 间距配得极小时退到略小于 step，避免网格点互相误判
+  const minDist = Math.min(D + 0.3, step * 0.99);
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
   const isMain = t => t.table_no === '主桌';
@@ -463,7 +470,7 @@ function autoLayout(tables, cfg) {
       for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
         for (let x = margin; x <= cfg.venue_width - margin; x += step) {
           if (circleHitsRect(stage, x, y, rad) || circleHitsRect(runway, x, y, rad)) continue;
-          if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < (D * 1.15) ** 2)) continue;
+          if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < minDist ** 2)) continue;
           found = { x, y }; break outer;
         }
       }
@@ -498,7 +505,7 @@ function renderFloor() {
   venue.style.backgroundSize = `${px(1)}px ${px(1)}px`;  // 1米网格
 
   document.getElementById('venue-info').textContent =
-    `会场 ${cfg.venue_width} × ${cfg.venue_depth} 米 · 桌径 ${cfg.table_diameter} 米（可在「设置」调整）`;
+    `会场 ${cfg.venue_width} × ${cfg.venue_depth} 米 · 桌径 ${cfg.table_diameter} 米 · 间距 ${cfg.table_gap} 米（可在「设置」调整）`;
   document.getElementById('venue-note').textContent =
     `比例约 1 米 = ${Math.round(scale)} 像素，背景网格为 1 米；圆桌按直径 ${cfg.table_diameter} 米等比绘制`;
 
@@ -695,6 +702,7 @@ function renderSettings() {
   document.getElementById('cfg-venue-width').value = state.config.venue_width;
   document.getElementById('cfg-venue-depth').value = state.config.venue_depth;
   document.getElementById('cfg-table-diameter').value = state.config.table_diameter;
+  document.getElementById('cfg-table-gap').value = state.config.table_gap;
 }
 
 /* ================= 弹窗 ================= */
@@ -966,11 +974,13 @@ async function saveConfig() {
     venue_width: parseFloat(document.getElementById('cfg-venue-width').value),
     venue_depth: parseFloat(document.getElementById('cfg-venue-depth').value),
     table_diameter: parseFloat(document.getElementById('cfg-table-diameter').value),
+    table_gap: parseFloat(document.getElementById('cfg-table-gap').value),
   };
   if (!body.default_capacity || body.default_capacity < 1) { toast('默认容量至少为 1', true); return; }
   if (isNaN(body.budget_total) || body.budget_total < 0) { toast('人数预算不能为负', true); return; }
   if (!(body.venue_width > 0) || !(body.venue_depth > 0)) { toast('会场长宽必须大于 0', true); return; }
   if (!(body.table_diameter > 0)) { toast('桌子直径必须大于 0', true); return; }
+  if (isNaN(body.table_gap) || body.table_gap < 0) { toast('桌子间距不能为负', true); return; }
   try {
     await api('PUT', '/api/config', body);
     await reload();

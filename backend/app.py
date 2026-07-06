@@ -56,6 +56,7 @@ class ConfigIn(BaseModel):
     venue_width: float = Field(default=18.0, gt=0, le=200)   # 会场宽（米，横向）
     venue_depth: float = Field(default=25.0, gt=0, le=200)   # 会场长（米，纵向）
     table_diameter: float = Field(default=1.8, gt=0, le=10)  # 桌子直径（米）
+    table_gap: float = Field(default=1.2, ge=0, le=20)       # 自动排列桌边间距（米）
 
 
 # ---------- 内部工具 ----------
@@ -483,6 +484,7 @@ def update_config(body: ConfigIn):
         "venue_width": body.venue_width,
         "venue_depth": body.venue_depth,
         "table_diameter": body.table_diameter,
+        "table_gap": body.table_gap,
     }
     storage.save_config(config)
     return config

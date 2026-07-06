@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
     "venue_width": 18.0,      # 会场宽度（米，横向，舞台所在边）
     "venue_depth": 25.0,      # 会场长度（米，纵向）
     "table_diameter": 1.8,    # 桌子直径（米）
+    "table_gap": 1.2,         # 自动排列时相邻桌子的边缘间距（米）
 }
 CONFIG_INT_KEYS = {"default_capacity", "budget_total"}
 
