@@ -85,8 +85,8 @@ def ensure_data_files():
 
 def _seed_demo_data():
     save_tables([
-        # 主桌演示手动摆放（T 台右侧靠舞台）；数字桌不设坐标，由平面图按桌号自动排列
-        {"table_no": "主桌", "label": "新人与主宾", "capacity": 12, "x": 12.5, "y": 5.5},
+        # 不设坐标：主桌自动固定在 T 台右侧第一位，数字桌以主桌为水平线按桌号排列
+        {"table_no": "主桌", "label": "新人与主宾", "capacity": 12, "x": None, "y": None},
         {"table_no": "1", "label": "男方亲戚", "capacity": None, "x": None, "y": None},
         {"table_no": "2", "label": "女方亲戚", "capacity": None, "x": None, "y": None},
         {"table_no": "3", "label": "同事朋友", "capacity": None, "x": None, "y": None},

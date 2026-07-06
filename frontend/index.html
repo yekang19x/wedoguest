@@ -385,7 +385,6 @@ function renderStats() {
   const s = state.stats;
   const overBudget = s.budget_total > 0 && s.expected > s.budget_total;
   const items = [
-    {lbl: '人数预算', num: s.budget_total},
     {lbl: '预算合计', num: s.invited_total},
     {lbl: '预计出席', num: s.expected, over: overBudget},
     {lbl: '已确认到场', num: s.confirmed},
@@ -437,28 +436,39 @@ function tableNoOrder(no) {
   return /^\d+$/.test(no) ? parseInt(no, 10) : Infinity;
 }
 
-// 给没有坐标的桌子自动找空位：按桌号排序后网格扫描（从上到下、从左到右），
-// 避开舞台/T台/已摆放的桌 → 数字桌号自然从左到右递增排列
+// 给没有坐标的桌子自动找空位（避开舞台/T台/已摆放的桌）：
+// 主桌固定在 T 台右侧第一个位置；其余按桌号排序，以主桌为第一排水平线，
+// 从左往右、从上往下网格排列 → 数字桌号自然递增
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), runway = runwayRect(cfg);
   const margin = rad + 0.6, step = D + 1.2;
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
+  const isMain = t => t.table_no === '主桌';
+  // 主桌最先分配（占住固定位），其余按桌号升序
   const pending = tables.filter(t => t.x == null || t.y == null).sort((a, b) =>
+    (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0) ||
     tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
     a.table_no.localeCompare(b.table_no, 'zh'));
+  // 第一排水平线：紧贴舞台下方；主桌固定位：T 台右侧第一个
+  const firstRowY = stage.h + rad + 0.6;
+  const mainSeat = { x: runway.x + runway.w + rad + 0.6, y: firstRowY };
   for (const t of pending) {
     let found = null;
-    outer:
-    for (let y = margin; y <= cfg.venue_depth - margin; y += step) {
-      for (let x = margin; x <= cfg.venue_width - margin; x += step) {
-        if (circleHitsRect(stage, x, y, rad) || circleHitsRect(runway, x, y, rad)) continue;
-        if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < (D * 1.15) ** 2)) continue;
-        found = { x, y }; break outer;
+    if (isMain(t)) {
+      found = mainSeat;
+    } else {
+      outer:
+      for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
+        for (let x = margin; x <= cfg.venue_width - margin; x += step) {
+          if (circleHitsRect(stage, x, y, rad) || circleHitsRect(runway, x, y, rad)) continue;
+          if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < (D * 1.15) ** 2)) continue;
+          found = { x, y }; break outer;
+        }
       }
+      found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
     }
-    found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
     pos[t.table_no] = found;
     placed.push([found.x, found.y]);
   }
@@ -877,10 +887,12 @@ async function doMove(gid, target, withFamily) {
 }
 
 /* ---- 桌子新增 / 编辑 ---- */
-// 下一个可用的数字桌号（现有数字桌号最大值 + 1）
+// 下一个可用的数字桌号（现有最大值 + 1，跳过含「4」的数字，婚礼习俗避 4）
 function nextTableNo() {
   const nums = state.tables.map(t => /^\d+$/.test(t.table_no) ? parseInt(t.table_no, 10) : 0);
-  return String(Math.max(0, ...nums) + 1);
+  let n = Math.max(0, ...nums) + 1;
+  while (String(n).includes('4')) n++;
+  return String(n);
 }
 
 function openTableModal(tableNo) {
