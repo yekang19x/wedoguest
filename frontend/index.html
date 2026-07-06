@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>婚礼宾客统计系统</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💒</text></svg>">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --ink: #3d3229;
+    --muted: #8a7f73;
+    --primary: #a33b4d;
+    --primary-dark: #832f3e;
+    --gold: #c9a227;
+    --line: #e8e0d5;
+    --ok: #3f8f5f;
+    --warn: #c77b28;
+    --danger: #c0392b;
+    --shadow: 0 2px 10px rgba(61, 50, 41, .08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+  }
+  header {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: #fff; padding: 14px 24px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    box-shadow: var(--shadow);
+  }
+  header h1 { margin: 0; font-size: 19px; letter-spacing: 1px; }
+  nav { display: flex; gap: 6px; }
+  nav button {
+    background: rgba(255,255,255,.12); color: #fff; border: none;
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  }
+  nav button.active { background: #fff; color: var(--primary-dark); font-weight: 600; }
+
+  #stats-bar {
+    display: flex; gap: 10px; padding: 14px 24px 0; flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 14px; min-width: 96px; box-shadow: var(--shadow);
+  }
+  .stat .num { font-size: 20px; font-weight: 700; color: var(--primary-dark); }
+  .stat .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .stat.over .num { color: var(--danger); }
+
+  main { padding: 16px 24px 60px; }
+  .tab-page { display: none; }
+  .tab-page.active { display: block; }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar .hint { color: var(--muted); font-size: 13px; }
+  .spacer { flex: 1; }
+
+  button.btn {
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 14px;
+  }
+  button.btn:hover { background: var(--primary-dark); }
+  button.btn.ghost {
+    background: transparent; color: var(--primary); border: 1px solid var(--primary);
+  }
+  button.btn.sm { padding: 3px 9px; font-size: 12px; border-radius: 6px; }
+  button.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+
+  input, select, textarea {
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+    font-size: 14px; font-family: inherit; background: #fff; color: var(--ink);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid rgba(163,59,77,.25); }
+
+  /* ---- 桌位图 ---- */
+  #floor-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px;
+  }
+  .table-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px; box-shadow: var(--shadow); min-height: 150px;
+    display: flex; flex-direction: column;
+  }
+  .table-card.dragover { outline: 2px dashed var(--gold); outline-offset: 2px; background: #fffbf0; }
+  .table-card .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .table-no-badge {
+    background: var(--primary); color: #fff; border-radius: 50%;
+    min-width: 34px; height: 34px; padding: 0 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+  }
+  .table-card.unassigned-card .table-no-badge { background: var(--muted); border-radius: 8px; }
+  .table-card .tlabel { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-card .cap { font-size: 12px; color: var(--muted); }
+  .table-card .cap.full { color: var(--danger); font-weight: 700; }
+  .capbar { height: 5px; background: var(--line); border-radius: 3px; margin: 4px 0 8px; overflow: hidden; }
+  .capbar > div { height: 100%; background: var(--ok); border-radius: 3px; }
+  .capbar > div.warn { background: var(--warn); }
+  .capbar > div.full { background: var(--danger); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; flex: 1; }
+  .chip {
+    background: #f6efe6; border: 1px solid var(--line); border-radius: 16px;
+    padding: 3px 10px; font-size: 13px; cursor: grab; user-select: none;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .chip:hover { border-color: var(--primary); }
+  .chip .n { color: var(--primary-dark); font-weight: 600; }
+  .chip.declined { opacity: .45; text-decoration: line-through; }
+  .chip.pending-status { border-style: dashed; }
+  .chip .sz { background: var(--gold); color: #fff; border-radius: 10px; padding: 0 6px; font-size: 11px; }
+  .empty-note { color: var(--muted); font-size: 12px; padding: 6px 0; }
+  .add-table-card {
+    border: 2px dashed var(--line); border-radius: 14px; min-height: 150px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); cursor: pointer; font-size: 15px; background: transparent;
+  }
+  .add-table-card:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* ---- 表格 ---- */
+  table.list { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+  table.list th, table.list td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.list th { background: #f4ede3; font-weight: 600; font-size: 13px; }
+  table.list tr:last-child td { border-bottom: none; }
+  table.list td .ops { display: flex; gap: 6px; }
+  table.list select.inline { padding: 3px 6px; font-size: 13px; border-radius: 6px; }
+  .tag { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; }
+  .tag.ok { background: #e2f2e8; color: var(--ok); }
+  .tag.pending { background: #fdf3e4; color: var(--warn); }
+  .tag.bad { background: #fbe9e7; color: var(--danger); }
+  .tag.plain { background: #eee7dc; color: var(--muted); }
+
+  /* ---- 设置 ---- */
+  .settings-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; max-width: 460px; box-shadow: var(--shadow); }
+  .form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .form-row label { font-size: 13px; color: var(--muted); }
+  .form-row .desc { font-size: 12px; color: var(--muted); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+
+  /* ---- 弹窗 ---- */
+  #modal-backdrop {
+    position: fixed; inset: 0; background: rgba(40,30,25,.45);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  #modal-backdrop.show { display: flex; }
+  #modal {
+    background: var(--card); border-radius: 14px; padding: 20px 22px;
+    width: min(520px, 92vw); max-height: 86vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  }
+  #modal h3 { margin: 0 0 16px; font-size: 17px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .checkbox-row { display: flex; align-items: flex-start; gap: 8px; background: #f8f3ea; border-radius: 8px; padding: 10px; }
+  .checkbox-row input { margin-top: 2px; }
+  .checkbox-row .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* ---- Toast ---- */
+  #toast {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px;
+    font-size: 14px; display: none; z-index: 99; max-width: 80vw;
+  }
+  #toast.show { display: block; }
+  #toast.error { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💒 婚礼宾客统计系统</h1>
+  <nav>
+    <button data-tab="floor" class="active">🪑 桌位图</button>
+    <button data-tab="guests">📋 宾客名单</button>
+    <button data-tab="tables">🛠 桌子管理</button>
+    <button data-tab="settings">⚙️ 设置</button>
+  </nav>
+</header>
+
+<section id="stats-bar"></section>
+
+<main>
+  <div class="tab-page active" id="tab-floor">
+    <div class="toolbar">
+      <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
+      <span class="hint">💡 拖动宾客名牌到目标桌即可换桌；点击名牌可编辑；点击桌卡「编辑」可单桌配置。</span>
+    </div>
+    <div id="floor-grid"></div>
+  </div>
+
+  <div class="tab-page" id="tab-guests">
+    <div class="toolbar">
+      <button class="btn" onclick="openGuestModal()">＋ 新增宾客</button>
+      <input id="guest-search" placeholder="搜索姓名 / 家属 / 备注…" style="width:240px"
+             oninput="renderGuestsTable()">
+      <div class="spacer"></div>
+      <span class="hint">状态列可直接下拉修改</span>
+    </div>
+    <table class="list" id="guests-table">
+      <thead><tr>
+        <th>姓名</th><th>人数</th><th>家属姓名</th><th>桌号</th>
+        <th>邀请函</th><th>确认状态</th><th>备注</th><th style="width:190px">操作</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="tab-page" id="tab-tables">
+    <div class="toolbar">
+      <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
+      <span class="hint">容量留空表示使用全局默认容量</span>
+    </div>
+    <table class="list" id="tables-table">
+      <thead><tr>
+        <th>桌号</th><th>备注名</th><th>容纳人数</th><th>已坐 / 容量</th><th style="width:140px">操作</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="tab-page" id="tab-settings">
+    <div class="settings-card">
+      <h3 style="margin-top:0">全局设置</h3>
+      <div class="form-row">
+        <label>默认单桌容纳人数（未单独配置容量的桌子生效）</label>
+        <input type="number" id="cfg-capacity" min="1">
+      </div>
+      <div class="form-row">
+        <label>人数预算（计划宴请总人数）</label>
+        <input type="number" id="cfg-budget" min="0">
+        <span class="desc">统计条会将「预计出席」与该预算对比，超出时标红。</span>
+      </div>
+      <button class="btn" onclick="saveConfig()">保存设置</button>
+    </div>
+  </div>
+</main>
+
+<div id="modal-backdrop"><div id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+let state = null;          // /api/overview 的数据
+let currentTab = 'floor';
+
+/* ================= 基础工具 ================= */
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 2600);
+}
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? {'Content-Type': 'application/json'} : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    const err = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/* 统一处理「容量不足 409 → 询问是否强制」的写操作 */
+async function apiWithForce(method, url, body) {
+  try {
+    return await api(method, url, body);
+  } catch (e) {
+    if (e.status === 409 && e.message.includes('容量不足') &&
+        confirm(e.message + '\n\n是否仍然强制安排？')) {
+      return api(method, url, {...body, force: true});
+    }
+    throw e;
+  }
+}
+
+async function reload() {
+  state = await api('GET', '/api/overview');
+  renderAll();
+}
+
+function guestById(id) { return state.guests.find(g => g.id === id); }
+function tableByNo(no) { return state.tables.find(t => t.table_no === no); }
+
+/* ================= 页签 ================= */
+
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.onclick = () => {
+    currentTab = btn.dataset.tab;
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab-page').forEach(p =>
+      p.classList.toggle('active', p.id === 'tab-' + currentTab));
+  };
+});
+
+/* ================= 渲染 ================= */
+
+function renderAll() {
+  renderStats();
+  renderFloor();
+  renderGuestsTable();
+  renderTablesTable();
+  renderSettings();
+}
+
+function renderStats() {
+  const s = state.stats;
+  const overBudget = s.budget_total > 0 && s.expected > s.budget_total;
+  const items = [
+    {lbl: '人数预算', num: s.budget_total},
+    {lbl: '预计出席', num: s.expected, over: overBudget},
+    {lbl: '已确认', num: s.confirmed},
+    {lbl: '待确认', num: s.pending},
+    {lbl: '不参加', num: s.declined},
+    {lbl: '已安排桌位', num: s.seated},
+    {lbl: '未安排', num: s.unseated},
+    {lbl: '邀请函已发', num: `${s.invite_sent}/${s.guest_count}`},
+  ];
+  document.getElementById('stats-bar').innerHTML = items.map(i => `
+    <div class="stat${i.over ? ' over' : ''}">
+      <div class="num">${i.num}</div><div class="lbl">${i.lbl}</div>
+    </div>`).join('');
+}
+
+function chipHtml(g) {
+  const cls = ['chip'];
+  if (g.confirm_status === '不参加') cls.push('declined');
+  if (g.confirm_status === '待确认') cls.push('pending-status');
+  const title = `${g.name}｜${g.party_size}人` +
+    (g.family_names ? `｜家属：${g.family_names}` : '') +
+    `｜${g.invite_status}｜${g.confirm_status}` + (g.note ? `｜${g.note}` : '');
+  return `<span class="${cls.join(' ')}" draggable="true" data-gid="${g.id}"
+      title="${esc(title)}" onclick="openGuestModal(${g.id})">
+      <span class="n">${esc(g.name)}</span><span class="sz">${g.party_size}</span>
+    </span>`;
+}
+
+function renderFloor() {
+  const grid = document.getElementById('floor-grid');
+  const tableCards = state.tables.map(t => {
+    const pct = Math.min(100, Math.round(t.occupied / t.effective_capacity * 100));
+    const barCls = t.occupied > t.effective_capacity ? 'full' : (pct >= 80 ? 'warn' : '');
+    const capCls = t.occupied > t.effective_capacity ? 'cap full' : 'cap';
+    const chips = t.guests.map(chipHtml).join('') ||
+      '<div class="empty-note">空桌 — 拖宾客到这里</div>';
+    return `
+      <div class="table-card" data-table="${esc(t.table_no)}">
+        <div class="head">
+          <span class="table-no-badge">${esc(t.table_no)}</span>
+          <span class="tlabel" title="${esc(t.label)}">${esc(t.label) || '<span style="color:var(--muted)">未命名</span>'}</span>
+          <span class="${capCls}">${t.occupied}/${t.effective_capacity}人${t.capacity === null ? '（默认）' : ''}</span>
+          <button class="btn sm ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑</button>
+        </div>
+        <div class="capbar"><div class="${barCls}" style="width:${pct}%"></div></div>
+        <div class="chips">${chips}</div>
+      </div>`;
+  }).join('');
+
+  const unassignedChips = state.unassigned_guests.map(chipHtml).join('') ||
+    '<div class="empty-note">没有未安排的宾客 🎉</div>';
+  const unassignedCard = `
+    <div class="table-card unassigned-card" data-table="">
+      <div class="head">
+        <span class="table-no-badge">待定</span>
+        <span class="tlabel">未安排宾客</span>
+        <span class="cap">${state.stats.unseated}人</span>
+      </div>
+      <div class="chips">${unassignedChips}</div>
+    </div>`;
+
+  grid.innerHTML = unassignedCard + tableCards +
+    `<div class="add-table-card" onclick="openTableModal()">＋ 新增桌子</div>`;
+
+  bindDragAndDrop(grid);
+}
+
+function bindDragAndDrop(grid) {
+  grid.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', chip.dataset.gid);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  grid.querySelectorAll('.table-card').forEach(card => {
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('dragover'); });
+    card.addEventListener('dragleave', () => card.classList.remove('dragover'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('dragover');
+      const gid = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (!gid) return;
+      const target = card.dataset.table;
+      const g = guestById(gid);
+      if (!g || g.table_no === target) return;
+      if (g.party_size > 1) {
+        openMoveModal(gid, target);   // 多人随行：弹窗确认是否带家属
+      } else {
+        doMove(gid, target, true);
+      }
+    });
+  });
+}
+
+function statusTag(st) {
+  if (st === '已确认') return '<span class="tag ok">已确认</span>';
+  if (st === '待确认') return '<span class="tag pending">待确认</span>';
+  if (st === '不参加') return '<span class="tag bad">不参加</span>';
+  return `<span class="tag plain">${esc(st)}</span>`;
+}
+
+function inlineSelect(g, field, options) {
+  return `<select class="inline" onchange="quickUpdate(${g.id}, '${field}', this.value)">` +
+    options.map(o => `<option${o === g[field] ? ' selected' : ''}>${o}</option>`).join('') +
+    '</select>';
+}
+
+function renderGuestsTable() {
+  const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
+  const rows = state.guests
+    .filter(g => !kw || [g.name, g.family_names, g.note, g.table_no]
+      .some(v => String(v).toLowerCase().includes(kw)))
+    .map(g => `
+      <tr>
+        <td><b>${esc(g.name)}</b></td>
+        <td>${g.party_size}</td>
+        <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
+        <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
+        <td>${inlineSelect(g, 'confirm_status', ['待确认', '已确认', '不参加'])}</td>
+        <td>${esc(g.note)}</td>
+        <td><div class="ops">
+          <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
+          <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
+          <button class="btn sm danger" onclick="removeGuest(${g.id})">删除</button>
+        </div></td>
+      </tr>`).join('');
+  document.querySelector('#guests-table tbody').innerHTML =
+    rows || '<tr><td colspan="8" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
+}
+
+function renderTablesTable() {
+  const rows = state.tables.map(t => `
+    <tr>
+      <td><b>${esc(t.table_no)}</b></td>
+      <td>${esc(t.label)}</td>
+      <td>${t.capacity === null ? `<span class="tag plain">默认（${state.config.default_capacity}）</span>` : t.capacity}</td>
+      <td>${t.occupied > t.effective_capacity
+            ? `<span class="tag bad">${t.occupied}/${t.effective_capacity} 超员</span>`
+            : `${t.occupied}/${t.effective_capacity}`}</td>
+      <td><div class="ops">
+        <button class="btn sm ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑</button>
+        <button class="btn sm danger" onclick="removeTable('${esc(t.table_no)}')">删除</button>
+      </div></td>
+    </tr>`).join('');
+  document.querySelector('#tables-table tbody').innerHTML =
+    rows || '<tr><td colspan="5" style="color:var(--muted)">暂无桌子</td></tr>';
+}
+
+function renderSettings() {
+  document.getElementById('cfg-capacity').value = state.config.default_capacity;
+  document.getElementById('cfg-budget').value = state.config.budget_total;
+}
+
+/* ================= 弹窗 ================= */
+
+function showModal(html) {
+  document.getElementById('modal').innerHTML = html;
+  document.getElementById('modal-backdrop').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('show');
+}
+document.getElementById('modal-backdrop').addEventListener('click', e => {
+  if (e.target.id === 'modal-backdrop') closeModal();
+});
+
+function tableOptions(selected) {
+  return `<option value=""${!selected ? ' selected' : ''}>（未安排）</option>` +
+    state.tables.map(t => {
+      const label = `${t.table_no}${t.label ? '｜' + t.label : ''}（${t.occupied}/${t.effective_capacity}）`;
+      return `<option value="${esc(t.table_no)}"${t.table_no === selected ? ' selected' : ''}>${esc(label)}</option>`;
+    }).join('');
+}
+
+/* ---- 宾客新增 / 编辑 ---- */
+function openGuestModal(gid) {
+  const g = gid ? guestById(gid) : null;
+  showModal(`
+    <h3>${g ? '编辑宾客' : '新增宾客'}</h3>
+    <div class="form-grid">
+      <div class="form-row"><label>姓名 *</label>
+        <input id="gm-name" value="${esc(g?.name ?? '')}"></div>
+      <div class="form-row"><label>总人数（含本人）</label>
+        <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}"></div>
+      <div class="form-row full"><label>家属姓名（多个用逗号分隔）</label>
+        <input id="gm-family" value="${esc(g?.family_names ?? '')}" placeholder="如：李娜,张小宝"></div>
+      <div class="form-row"><label>桌号</label>
+        <select id="gm-table">${tableOptions(g?.table_no ?? '')}</select></div>
+      <div class="form-row"><label>邀请函状态</label>
+        <select id="gm-invite">
+          <option${(g?.invite_status ?? '未发送') === '未发送' ? ' selected' : ''}>未发送</option>
+          <option${g?.invite_status === '已发送' ? ' selected' : ''}>已发送</option>
+        </select></div>
+      <div class="form-row"><label>确认状态</label>
+        <select id="gm-confirm">
+          <option${(g?.confirm_status ?? '待确认') === '待确认' ? ' selected' : ''}>待确认</option>
+          <option${g?.confirm_status === '已确认' ? ' selected' : ''}>已确认</option>
+          <option${g?.confirm_status === '不参加' ? ' selected' : ''}>不参加</option>
+        </select></div>
+      <div class="form-row"><label>备注</label>
+        <input id="gm-note" value="${esc(g?.note ?? '')}"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="saveGuest(${g ? g.id : 'null'})">保存</button>
+    </div>`);
+  document.getElementById('gm-name').focus();
+}
+
+async function saveGuest(gid) {
+  const body = {
+    name: document.getElementById('gm-name').value.trim(),
+    party_size: parseInt(document.getElementById('gm-size').value, 10) || 1,
+    family_names: document.getElementById('gm-family').value.trim(),
+    table_no: document.getElementById('gm-table').value,
+    invite_status: document.getElementById('gm-invite').value,
+    confirm_status: document.getElementById('gm-confirm').value,
+    note: document.getElementById('gm-note').value.trim(),
+  };
+  if (!body.name) { toast('请填写姓名', true); return; }
+  try {
+    await apiWithForce(gid ? 'PUT' : 'POST', gid ? `/api/guests/${gid}` : '/api/guests', body);
+    closeModal();
+    await reload();
+    toast(gid ? '已保存' : '已新增宾客');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function quickUpdate(gid, field, value) {
+  const g = guestById(gid);
+  try {
+    await apiWithForce('PUT', `/api/guests/${gid}`, {...g, [field]: value});
+    await reload();
+    toast('已更新');
+  } catch (e) { toast(e.message, true); await reload(); }
+}
+
+async function removeGuest(gid) {
+  const g = guestById(gid);
+  if (!confirm(`确定删除宾客「${g.name}」（${g.party_size}人）？`)) return;
+  try {
+    await api('DELETE', `/api/guests/${gid}`);
+    await reload();
+    toast('已删除');
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---- 换桌 ---- */
+function openMoveModal(gid, presetTarget) {
+  const g = guestById(gid);
+  const from = g.table_no ? `「${esc(g.table_no)}」桌` : '未安排区';
+  const familyRow = g.party_size > 1 ? `
+    <div class="checkbox-row">
+      <input type="checkbox" id="mv-family" checked>
+      <div>
+        <label for="mv-family"><b>带上家属一起换桌</b>（共 ${g.party_size} 人）</label>
+        <div class="sub">不勾选则仅「${esc(g.name)}」本人（1 人）换到新桌，
+          其余 ${g.party_size - 1} 人（${esc(g.family_names) || '家属'}）留在原位置，名单中将拆分为两条记录。</div>
+      </div>
+    </div>` : '';
+  showModal(`
+    <h3>换桌：${esc(g.name)}（当前在 ${from}）</h3>
+    <div class="form-row"><label>目标位置</label>
+      <select id="mv-target">${tableOptions(presetTarget !== undefined ? presetTarget : g.table_no)}</select>
+    </div>
+    ${familyRow}
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitMove(${gid})">确定换桌</button>
+    </div>`);
+}
+
+async function submitMove(gid) {
+  const target = document.getElementById('mv-target').value;
+  const fam = document.getElementById('mv-family');
+  await doMove(gid, target, fam ? fam.checked : true);
+}
+
+async function doMove(gid, target, withFamily) {
+  const g = guestById(gid);
+  try {
+    const r = await apiWithForce('POST', `/api/guests/${gid}/move`,
+      {target_table: target, with_family: withFamily});
+    closeModal();
+    await reload();
+    const dest = target ? `「${target}」桌` : '未安排区';
+    toast(r.family_left
+      ? `${g.name} 已换到${dest}，${r.family_left.party_size} 位家属留在原位置`
+      : `${g.name}（${g.party_size}人）已移到${dest}`);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---- 桌子新增 / 编辑 ---- */
+function openTableModal(tableNo) {
+  const t = tableNo ? tableByNo(tableNo) : null;
+  showModal(`
+    <h3>${t ? `编辑桌子「${esc(t.table_no)}」` : '新增桌子'}</h3>
+    <div class="form-grid">
+      <div class="form-row"><label>桌号 *（如 1、2 或 主桌）</label>
+        <input id="tm-no" value="${esc(t?.table_no ?? '')}"></div>
+      <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity} 人）</label>
+        <input id="tm-cap" type="number" min="1" value="${t?.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
+      <div class="form-row full"><label>备注名（如：男方亲戚、大学同学）</label>
+        <input id="tm-label" value="${esc(t?.label ?? '')}"></div>
+    </div>
+    <div class="modal-actions">
+      ${t ? `<button class="btn danger" style="margin-right:auto" onclick="removeTable('${esc(t.table_no)}')">删除此桌</button>` : ''}
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="saveTable(${t ? `'${esc(t.table_no)}'` : 'null'})">保存</button>
+    </div>`);
+  document.getElementById('tm-no').focus();
+}
+
+async function saveTable(origNo) {
+  const capRaw = document.getElementById('tm-cap').value.trim();
+  const body = {
+    table_no: document.getElementById('tm-no').value.trim(),
+    label: document.getElementById('tm-label').value.trim(),
+    capacity: capRaw ? parseInt(capRaw, 10) : null,
+  };
+  if (!body.table_no) { toast('请填写桌号', true); return; }
+  try {
+    await api(origNo ? 'PUT' : 'POST',
+      origNo ? `/api/tables/${encodeURIComponent(origNo)}` : '/api/tables', body);
+    closeModal();
+    await reload();
+    toast('已保存');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function removeTable(tableNo) {
+  const t = tableByNo(tableNo);
+  const warn = t.guests.length
+    ? `该桌上有 ${t.guests.length} 组宾客（${t.occupied} 人），删除后他们将移入「未安排」区。\n`
+    : '';
+  if (!confirm(`${warn}确定删除桌「${tableNo}」？`)) return;
+  try {
+    await api('DELETE', `/api/tables/${encodeURIComponent(tableNo)}`);
+    closeModal();
+    await reload();
+    toast('已删除桌子');
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---- 设置 ---- */
+async function saveConfig() {
+  const body = {
+    default_capacity: parseInt(document.getElementById('cfg-capacity').value, 10),
+    budget_total: parseInt(document.getElementById('cfg-budget').value, 10),
+  };
+  if (!body.default_capacity || body.default_capacity < 1) { toast('默认容量至少为 1', true); return; }
+  if (isNaN(body.budget_total) || body.budget_total < 0) { toast('人数预算不能为负', true); return; }
+  try {
+    await api('PUT', '/api/config', body);
+    await reload();
+    toast('设置已保存');
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ================= 启动 ================= */
+reload().catch(e => toast('加载失败：' + e.message, true));
+</script>
+</body>
+</html>
