@@ -48,9 +48,10 @@ def ensure_data_files():
         save_config(dict(DEFAULT_CONFIG))
     if not TABLES_CSV.exists():
         save_tables([
+            # 主桌演示手动摆放（T 台右侧靠舞台）；数字桌不设坐标，由平面图按桌号自动排列
             {"table_no": "主桌", "label": "新人与主宾", "capacity": 12, "x": 12.5, "y": 5.5},
-            {"table_no": "1", "label": "男方亲戚", "capacity": None, "x": 4.5, "y": 12.0},
-            {"table_no": "2", "label": "女方亲戚", "capacity": None, "x": 13.5, "y": 12.0},
+            {"table_no": "1", "label": "男方亲戚", "capacity": None, "x": None, "y": None},
+            {"table_no": "2", "label": "女方亲戚", "capacity": None, "x": None, "y": None},
             {"table_no": "3", "label": "同事朋友", "capacity": None, "x": None, "y": None},
         ])
     if not GUESTS_XLSX.exists():

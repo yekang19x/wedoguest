@@ -204,6 +204,7 @@
   <div class="tab-page active" id="tab-floor">
     <div class="toolbar">
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
+      <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
       <span class="hint" id="venue-info"></span>
       <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
         <input type="range" id="zoom-range" min="50" max="250" value="100" step="10"
@@ -428,14 +429,23 @@ function circleHitsRect(r, cx, cy, rad) {
   return cx > r.x - rad && cx < r.x + r.w + rad && cy > r.y - rad && cy < r.y + r.h + rad;
 }
 
-// 给没有坐标的桌子自动找空位（网格扫描，避开舞台/T台/已摆放的桌）
+// 桌号排序值：纯数字桌号按数值升序，其余（主桌等）排在数字桌之后
+function tableNoOrder(no) {
+  return /^\d+$/.test(no) ? parseInt(no, 10) : Infinity;
+}
+
+// 给没有坐标的桌子自动找空位：按桌号排序后网格扫描（从上到下、从左到右），
+// 避开舞台/T台/已摆放的桌 → 数字桌号自然从左到右递增排列
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), runway = runwayRect(cfg);
   const margin = rad + 0.6, step = D + 1.2;
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
-  for (const t of tables.filter(t => t.x == null || t.y == null)) {
+  const pending = tables.filter(t => t.x == null || t.y == null).sort((a, b) =>
+    tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
+    a.table_no.localeCompare(b.table_no, 'zh'));
+  for (const t of pending) {
     let found = null;
     outer:
     for (let y = margin; y <= cfg.venue_depth - margin; y += step) {
@@ -819,13 +829,19 @@ async function doMove(gid, target, withFamily) {
 }
 
 /* ---- 桌子新增 / 编辑 ---- */
+// 下一个可用的数字桌号（现有数字桌号最大值 + 1）
+function nextTableNo() {
+  const nums = state.tables.map(t => /^\d+$/.test(t.table_no) ? parseInt(t.table_no, 10) : 0);
+  return String(Math.max(0, ...nums) + 1);
+}
+
 function openTableModal(tableNo) {
   const t = tableNo ? tableByNo(tableNo) : null;
   showModal(`
     <h3>${t ? `编辑桌子「${esc(t.table_no)}」` : '新增桌子'}</h3>
     <div class="form-grid">
       <div class="form-row"><label>桌号 *（如 1、2 或 主桌）</label>
-        <input id="tm-no" value="${esc(t?.table_no ?? '')}"></div>
+        <input id="tm-no" value="${esc(t?.table_no ?? nextTableNo())}"></div>
       <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity} 人）</label>
         <input id="tm-cap" type="number" min="1" value="${t?.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
       <div class="form-row full"><label>备注名（如：男方亲戚、大学同学）</label>
@@ -856,6 +872,15 @@ async function saveTable(origNo) {
     closeModal();
     await reload();
     toast('已保存');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function resetPositions() {
+  if (!confirm('将清除所有桌子的手动摆放位置，恢复按桌号从左到右的自动排列。\n确定重新排列？')) return;
+  try {
+    await api('POST', '/api/tables/reset-positions');
+    await reload();
+    toast('已按桌号重新排列全部桌子');
   } catch (e) { toast(e.message, true); }
 }
 

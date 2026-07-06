@@ -291,6 +291,17 @@ def update_table(table_no: str, body: TableIn):
     return table
 
 
+@app.post("/api/tables/reset-positions")
+def reset_table_positions():
+    """清空所有桌子坐标 → 平面图恢复按桌号有序的自动排列。"""
+    tables = storage.load_tables()
+    for t in tables:
+        t["x"] = None
+        t["y"] = None
+    storage.save_tables(tables)
+    return {"ok": True, "count": len(tables)}
+
+
 @app.put("/api/tables/{table_no}/position")
 def move_table(table_no: str, body: dict):
     """仅更新桌子坐标（平面图拖动摆位）。"""
