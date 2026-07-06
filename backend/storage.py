@@ -18,7 +18,7 @@ DB_PATH = DATA_DIR / "wedding.db"
 LEGACY_GUESTS_XLSX = DATA_DIR / "guests.xlsx"
 LEGACY_TABLES_CSV = DATA_DIR / "tables.csv"
 LEGACY_CONFIG_CSV = DATA_DIR / "config.csv"
-LEGACY_GUEST_HEADER_ALIASES = {"总人数": "预算人数"}
+LEGACY_GUEST_HEADER_ALIASES = {"总人数": "预计人数"}
 
 INVITE_STATUSES = ["未发送", "已发送"]
 CONFIRM_STATUSES = ["待确认", "已确认", "不参加"]
@@ -86,7 +86,7 @@ def ensure_data_files():
 
 def _seed_demo_data():
     save_tables([
-        # 不设坐标：主桌自动固定在 T 台右侧第一位，数字桌以主桌为水平线按桌号排列
+        # 不设坐标：主桌自动排在舞台右侧区域左上角，其余桌按桌号排列
         {"table_no": "主桌", "label": "新人与主宾", "capacity": 12, "x": None, "y": None},
         {"table_no": "1", "label": "男方亲戚", "capacity": None, "x": None, "y": None},
         {"table_no": "2", "label": "女方亲戚", "capacity": None, "x": None, "y": None},
@@ -214,7 +214,7 @@ def _migrate_legacy():
         for row in rows:
             if row is None or cell(row, "ID") is None:
                 continue
-            party_size = int(cell(row, "预算人数") or 1)
+            party_size = int(cell(row, "预计人数") or 1)
             conf_raw = cell(row, "确认人数")
             conf_str = str(conf_raw).strip() if conf_raw is not None else ""
             guests.append({

@@ -248,7 +248,7 @@
     </div>
     <table class="list" id="guests-table">
       <thead><tr>
-        <th>姓名</th><th>预算人数</th><th>确认人数</th><th>家属姓名</th><th>桌号</th>
+        <th>姓名</th><th>预计人数</th><th>确认人数</th><th>家属姓名</th><th>桌号</th>
         <th>邀请函</th><th>确认状态</th><th>备注</th><th style="width:190px">操作</th>
       </tr></thead>
       <tbody></tbody>
@@ -387,7 +387,7 @@ function renderAll() {
   renderSettings();
 }
 
-// 占座人数：已确认按确认人数，待确认按预算人数，不参加不占座（与后端口径一致）
+// 占座人数：已确认按确认人数，待确认按预计人数，不参加不占座（与后端口径一致）
 function seatSize(g) {
   if (g.confirm_status === '不参加') return 0;
   return g.confirm_status === '已确认' ? g.confirmed_size : g.party_size;
@@ -449,42 +449,35 @@ function tableNoOrder(no) {
 }
 
 // 给没有坐标的桌子自动找空位（避开半圆舞台/中线通道/已摆放的桌）：
-// 场地以中线通道分为左右两边；主桌固定在通道右侧第一个位置；
-// 其余按桌号排序，以主桌为第一排水平线，从左往右、从上往下分列两侧
+// 场地以中线通道分为左右两边；主桌自动排在舞台右侧区域的左上角；
+// 其余按桌号排序，从左往右、从上往下分列两侧
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), aisle = aisleRect(cfg);
   const margin = rad + 0.6, step = D + cfg.table_gap;
-  // 与已摆放桌的最小圆心距：保证不贴脸即可（网格美观间距由 step 保证）；
-  // 间距配得极小时退到略小于 step，避免网格点互相误判。
-  // 0.25 而非 0.3：主桌固定位与网格点的距离恰为桌径+0.3，留出浮点余量
   const minDist = Math.min(D + 0.25, step * 0.99);
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
   const isMain = t => t.table_no === '主桌';
-  // 主桌最先分配（占住固定位），其余按桌号升序
+  // 主桌最先分配（确保占到右侧区域左上角），其余按桌号升序
   const pending = tables.filter(t => t.x == null || t.y == null).sort((a, b) =>
     (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0) ||
     tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
     a.table_no.localeCompare(b.table_no, 'zh'));
-  // 第一排水平线：紧贴舞台下方；主桌固定位：中线通道右侧第一个
   const firstRowY = stage.h + rad + 0.6;
-  const mainSeat = { x: aisle.x + aisle.w + rad + 0.6, y: firstRowY };
   for (const t of pending) {
     let found = null;
-    if (isMain(t)) {
-      found = mainSeat;
-    } else {
-      outer:
-      for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
-        for (let x = margin; x <= cfg.venue_width - margin; x += step) {
-          if (circleHitsRect(stage, x, y, rad) || circleHitsRect(aisle, x, y, rad)) continue;
-          if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < minDist ** 2)) continue;
-          found = { x, y }; break outer;
-        }
+    const rightOnly = isMain(t);
+    outer:
+    for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
+      for (let x = margin; x <= cfg.venue_width - margin; x += step) {
+        if (rightOnly && x < aisle.x + aisle.w + rad) continue;
+        if (circleHitsRect(stage, x, y, rad) || circleHitsRect(aisle, x, y, rad)) continue;
+        if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < minDist ** 2)) continue;
+        found = { x, y }; break outer;
       }
-      found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
     }
+    found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
     pos[t.table_no] = found;
     placed.push([found.x, found.y]);
   }
@@ -744,13 +737,13 @@ function openGuestModal(gid) {
     <div class="form-grid">
       <div class="form-row full"><label>姓名 *</label>
         <input id="gm-name" value="${esc(g?.name ?? '')}"></div>
-      <div class="form-row"><label>预算人数（含本人）</label>
+      <div class="form-row"><label>预计人数（含本人）</label>
         <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}"></div>
       <div class="form-row"><label>确认人数（确认会到，留空 = 同预算）</label>
         <input id="gm-confirmed-size" type="number" min="0" value="${g?.confirmed_size ?? ''}"
-               placeholder="默认 = 预算人数"></div>
-      <div class="form-row full"><label>家属姓名（多个用逗号分隔）</label>
-        <input id="gm-family" value="${esc(g?.family_names ?? '')}" placeholder="如：李娜,张小宝"></div>
+               placeholder="默认 = 预计人数"></div>
+      <div class="form-row full"><label>家属信息</label>
+        <input id="gm-family" value="${esc(g?.family_names ?? '')}" placeholder="如：张三、李四等4位家属"></div>
       <div class="form-row"><label>桌号</label>
         <select id="gm-table">${tableOptions(g?.table_no ?? '')}</select></div>
       <div class="form-row"><label>邀请函状态</label>
@@ -826,9 +819,10 @@ function openImportModal() {
       <label><input type="radio" name="im-mode" value="replace"> <b>覆盖全部</b>（清空现有宾客后导入）</label>
     </div>
     <div style="font-size:12px; color:var(--muted); line-height:1.7; margin-top:10px">
-      表头格式：<b>姓名｜配偶｜子女1、子女2…｜预计人数｜确认人数｜桌号</b><br>
-      · 预计人数留空时按「本人 + 家属数」推断；确认人数留空默认等于预计人数<br>
-      · 名单中出现的新桌号会自动建桌；导入宾客的邀请函 / 确认状态为初始值<br>
+      表头格式：<b>姓名｜家属｜预计人数｜确认人数｜桌号｜邀请状态｜确认状态｜备注</b><br>
+      · 家属列填写家属姓名（如：张三、李四），按预计人数自动补全<br>
+      · 预计人数留空默认1；确认人数留空默认等于预计人数<br>
+      · 邀请状态：未发送 / 已发送；确认状态：待确认 / 已确认 / 不参加<br>
       · 建议先点「导出 Excel」获得标准模板
     </div>
     <div class="modal-actions">

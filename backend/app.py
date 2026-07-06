@@ -3,6 +3,7 @@
 数据存 data/wedding.db（SQLite）；宾客名单支持 xlsx 导入/导出。
 """
 
+import re
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -10,6 +11,8 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 
 import storage
@@ -26,8 +29,8 @@ storage.ensure_data_files()
 
 class GuestIn(BaseModel):
     name: str = Field(min_length=1)
-    party_size: int = Field(default=1, ge=1)          # 预算人数（含本人）
-    confirmed_size: int | None = Field(default=None, ge=0)  # 确认会到人数，None = 等于预算人数
+    party_size: int = Field(default=1, ge=1)          # 预计人数（含本人）
+    confirmed_size: int | None = Field(default=None, ge=0)  # 确认会到人数，None = 等于预计人数
     family_names: str = ""
     table_no: str = ""
     invite_status: str = "未发送"
@@ -69,7 +72,7 @@ def _validate_statuses(invite_status: str, confirm_status: str):
 
 
 def _seat_size(g: dict) -> int:
-    """占座人数：已确认按确认人数，待确认按预算人数，不参加不占座。"""
+    """占座人数：已确认按确认人数，待确认按预计人数，不参加不占座。"""
     if g["confirm_status"] == "不参加":
         return 0
     if g["confirm_status"] == "已确认":
@@ -116,7 +119,7 @@ def _find_guest(guests: list[dict], gid: int) -> dict:
 
 
 def _build_stats(guests: list[dict], config: dict) -> dict:
-    # 已确认宾客按「确认人数」计，待确认按「预算人数」计，不参加不计座
+    # 已确认宾客按「确认人数」计，待确认按「预计人数」计，不参加不计座
     confirmed = sum(g["confirmed_size"] for g in guests if g["confirm_status"] == "已确认")
     pending = sum(g["party_size"] for g in guests if g["confirm_status"] == "待确认")
     declined = sum(g["party_size"] for g in guests if g["confirm_status"] == "不参加")
@@ -259,8 +262,7 @@ def move_guest(gid: int, body: MoveIn):
 
 
 # ---------- 宾客名单导入 / 导出（xlsx） ----------
-# 交换格式：姓名 | 配偶 | 子女1..N | 预计人数 | 确认人数 | 桌号
-# 家属名平铺为多列（第一位视为配偶，其余为子女），按预计人数-1 补足空位。
+# 交换格式：姓名 | 家属 | 预计人数 | 确认人数 | 桌号 | 邀请状态 | 确认状态 | 备注
 
 EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -282,28 +284,84 @@ def _cell_int(v) -> int | None:
         return None
 
 
+_RE_NAME_ETC = re.compile(r"^(.+?)等(\d+)位家属$")
+_RE_COUNT_ONLY = re.compile(r"^(\d+)位家属$")
+
+
+def _format_family(names: list[str], party_size: int) -> str:
+    family_count = party_size - 1
+    if family_count <= 0:
+        return ""
+    if not names:
+        return f"{family_count}位家属"
+    if len(names) >= family_count:
+        return "、".join(names[:family_count])
+    return f"{'、'.join(names)}等{family_count}位家属"
+
+
+def _parse_family_names(text: str) -> list[str]:
+    text = text.strip()
+    if not text or text == "无":
+        return []
+    if _RE_COUNT_ONLY.match(text):
+        return []
+    m = _RE_NAME_ETC.match(text)
+    if m:
+        return [n.strip() for n in m.group(1).split("、") if n.strip()]
+    return [n.strip() for n in text.split("、") if n.strip()]
+
+
+def _export_family(g) -> str:
+    fn = g["family_names"]
+    if not fn:
+        return "无"
+    if "," in fn:
+        names = [s.strip() for s in fn.split(",") if s.strip()]
+    else:
+        names = _parse_family_names(fn)
+    return _format_family(names, g["party_size"]) or "无"
+
+
 @app.get("/api/guests/export")
 def export_guests():
     guests = storage.load_guests()
-    padded = []
-    for g in guests:
-        fam = [s.strip() for s in g["family_names"].split(",") if s.strip()]
-        fam += [""] * max(0, g["party_size"] - 1 - len(fam))  # 按人数补全空位
-        padded.append(fam)
-    # 至少保留 配偶+2子女 列，空名单导出也可当录入模板
-    max_family = max([len(f) for f in padded] + [3])
-    headers = ["姓名", "配偶"] + [f"子女{i}" for i in range(1, max_family)] + \
-              ["预计人数", "确认人数", "桌号"]
+    headers = ["姓名", "家属", "预计人数", "确认人数", "桌号",
+               "邀请状态", "确认状态", "备注"]
 
     wb = Workbook()
     ws = wb.active
     ws.title = "宾客名单"
     ws.append(headers)
-    for g, fam in zip(guests, padded):
-        fam_cells = fam + [""] * (max_family - len(fam))
-        ws.append([g["name"], *fam_cells, g["party_size"], g["confirmed_size"], g["table_no"]])
-    for i in range(1, len(headers) + 1):
-        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = 12
+    for g in guests:
+        ws.append([g["name"], _export_family(g), g["party_size"], g["confirmed_size"],
+                   g["table_no"], g["invite_status"], g["confirm_status"], g["note"]])
+
+    # 表头样式
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    hdr_fill = PatternFill(start_color="A2687B", end_color="A2687B", fill_type="solid")
+    hdr_align = Alignment(horizontal="center", vertical="center")
+    for cell in ws[1]:
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = hdr_align
+
+    # 数据行样式
+    row_border = Border(bottom=Side(style="thin", color="D3BFB0"))
+    row_align = Alignment(vertical="center")
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = row_align
+            cell.border = row_border
+
+    # 列宽自适应
+    for col_idx in range(1, len(headers) + 1):
+        max_len = 0
+        for row_idx in range(1, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=col_idx).value
+            if val is not None:
+                max_len = max(max_len, sum(2 if ord(c) > 127 else 1 for c in str(val)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 4, 8), 40)
+
     ws.freeze_panes = "A2"
     buf = BytesIO()
     wb.save(buf)
@@ -329,15 +387,14 @@ async def import_guests(request: Request, mode: str = "append"):
     header = next(rows, None) or ()
     col = {}
     for i, h in enumerate(header):
-        name = str(h or "").strip()
-        if name:
-            col[name] = i
+        hname = str(h or "").strip()
+        if hname:
+            col[hname] = i
     if "姓名" not in col:
-        raise HTTPException(400, "缺少「姓名」列（表头需含：姓名、配偶、子女N、预计人数、确认人数、桌号）")
-    family_cols = sorted(i for name, i in col.items() if name == "配偶" or name.startswith("子女"))
+        raise HTTPException(400, "缺少「姓名」列（表头需含：姓名、家属、预计人数、确认人数、桌号）")
 
-    def cell(vals, name):
-        i = col.get(name)
+    def cell(vals, cname):
+        i = col.get(cname)
         return vals[i] if i is not None and i < len(vals) else None
 
     guests = [] if mode == "replace" else storage.load_guests()
@@ -348,39 +405,50 @@ async def import_guests(request: Request, mode: str = "append"):
 
     for row in rows:
         if row is None or all(v is None or str(v).strip() == "" for v in row):
-            continue  # 整行空白直接忽略
+            continue
         name = _norm_cell(cell(row, "姓名"))
         if not name:
             skipped += 1
             continue
-        family = [_norm_cell(row[i]) for i in family_cols
-                  if i < len(row) and _norm_cell(row[i])]
-        party_raw = _cell_int(cell(row, "预计人数"))
-        # 人数缺省按 本人+家属数 推断；显式填写时不小于已列出的家属数
-        party = max(party_raw or 0, 1 + len(family)) if (party_raw or family) else 1
+
+        party = _cell_int(cell(row, "预计人数")) or 1
+
+        family_text = _norm_cell(cell(row, "家属"))
+        family_names_list = _parse_family_names(family_text)
+        family_names = _format_family(family_names_list, party)
+
         conf_raw = _cell_int(cell(row, "确认人数"))
         confirmed = min(conf_raw, party) if conf_raw is not None else party
+
         table_no = _norm_cell(cell(row, "桌号"))
         if table_no and table_no not in known_tables:
             unknown_tables.append(table_no)
             known_tables.add(table_no)
+
+        invite_raw = _norm_cell(cell(row, "邀请状态"))
+        invite_status = invite_raw if invite_raw in INVITE_STATUSES else "未发送"
+
+        confirm_raw = _norm_cell(cell(row, "确认状态"))
+        confirm_status = confirm_raw if confirm_raw in CONFIRM_STATUSES else "待确认"
+
+        note = _norm_cell(cell(row, "备注"))
+
         guests.append({
             "id": next_id,
             "name": name,
             "party_size": party,
             "confirmed_size": max(0, confirmed),
-            "family_names": ",".join(family),
+            "family_names": family_names,
             "table_no": table_no,
-            "invite_status": "未发送",
-            "confirm_status": "待确认",
-            "note": "",
+            "invite_status": invite_status,
+            "confirm_status": confirm_status,
+            "note": note,
         })
         next_id += 1
         imported += 1
 
     if imported == 0 and skipped == 0:
         raise HTTPException(400, "文件里没有可导入的数据行")
-    # 名单里出现的新桌号自动建桌（容量用全局默认，位置走自动布局）
     for no in unknown_tables:
         tables.append({"table_no": no, "label": "", "capacity": None, "x": None, "y": None})
     if unknown_tables:
