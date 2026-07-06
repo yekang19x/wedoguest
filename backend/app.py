@@ -23,7 +23,8 @@ storage.ensure_data_files()
 
 class GuestIn(BaseModel):
     name: str = Field(min_length=1)
-    party_size: int = Field(default=1, ge=1)
+    party_size: int = Field(default=1, ge=1)          # 预算人数（含本人）
+    confirmed_size: int | None = Field(default=None, ge=0)  # 确认会到人数，None = 等于预算人数
     family_names: str = ""
     table_no: str = ""
     invite_status: str = "未发送"
@@ -42,11 +43,16 @@ class TableIn(BaseModel):
     table_no: str = Field(min_length=1)
     label: str = ""
     capacity: int | None = Field(default=None, ge=1)  # None = 使用全局默认容量
+    x: float | None = Field(default=None, ge=0)       # 桌心坐标（米），None = 未摆放
+    y: float | None = Field(default=None, ge=0)
 
 
 class ConfigIn(BaseModel):
     default_capacity: int = Field(ge=1)
     budget_total: int = Field(ge=0)
+    venue_width: float = Field(default=18.0, gt=0, le=200)   # 会场宽（米，横向）
+    venue_depth: float = Field(default=25.0, gt=0, le=200)   # 会场长（米，纵向）
+    table_diameter: float = Field(default=1.8, gt=0, le=10)  # 桌子直径（米）
 
 
 # ---------- 内部工具 ----------
@@ -58,12 +64,19 @@ def _validate_statuses(invite_status: str, confirm_status: str):
         raise HTTPException(400, f"确认状态必须是 {CONFIRM_STATUSES} 之一")
 
 
+def _seat_size(g: dict) -> int:
+    """占座人数：已确认按确认人数，待确认按预算人数，不参加不占座。"""
+    if g["confirm_status"] == "不参加":
+        return 0
+    if g["confirm_status"] == "已确认":
+        return g["confirmed_size"]
+    return g["party_size"]
+
+
 def _table_occupied(guests: list[dict], table_no: str, exclude_ids: set[int] = frozenset()) -> int:
-    """某桌当前占用人数。不参加的宾客不占座位。"""
     return sum(
-        g["party_size"] for g in guests
+        _seat_size(g) for g in guests
         if g["table_no"] == table_no and g["id"] not in exclude_ids
-        and g["confirm_status"] != "不参加"
     )
 
 
@@ -99,22 +112,19 @@ def _find_guest(guests: list[dict], gid: int) -> dict:
 
 
 def _build_stats(guests: list[dict], config: dict) -> dict:
-    def size_sum(pred):
-        return sum(g["party_size"] for g in guests if pred(g))
-
-    confirmed = size_sum(lambda g: g["confirm_status"] == "已确认")
-    pending = size_sum(lambda g: g["confirm_status"] == "待确认")
-    declined = size_sum(lambda g: g["confirm_status"] == "不参加")
-    attending = lambda g: g["confirm_status"] != "不参加"
+    # 已确认宾客按「确认人数」计，待确认按「预算人数」计，不参加不计座
+    confirmed = sum(g["confirmed_size"] for g in guests if g["confirm_status"] == "已确认")
+    pending = sum(g["party_size"] for g in guests if g["confirm_status"] == "待确认")
+    declined = sum(g["party_size"] for g in guests if g["confirm_status"] == "不参加")
     return {
         "budget_total": config["budget_total"],
-        "invited_total": size_sum(lambda g: True),
+        "invited_total": sum(g["party_size"] for g in guests),  # 预算合计
         "confirmed": confirmed,
         "pending": pending,
         "declined": declined,
         "expected": confirmed + pending,
-        "seated": size_sum(lambda g: attending(g) and g["table_no"]),
-        "unseated": size_sum(lambda g: attending(g) and not g["table_no"]),
+        "seated": sum(_seat_size(g) for g in guests if g["table_no"]),
+        "unseated": sum(_seat_size(g) for g in guests if not g["table_no"]),
         "guest_count": len(guests),
         "invite_sent": sum(1 for g in guests if g["invite_status"] == "已发送"),
         "invite_unsent": sum(1 for g in guests if g["invite_status"] == "未发送"),
@@ -150,24 +160,28 @@ def overview():
 
 # ---------- 宾客 ----------
 
-@app.post("/api/guests")
-def create_guest(body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status)
-    guests = storage.load_guests()
-    tables = storage.load_tables()
-    config = storage.load_config()
-    incoming = body.party_size if body.confirm_status != "不参加" else 0
-    _check_capacity(guests, tables, config, body.table_no, incoming, force=body.force)
-    guest = {
-        "id": storage.next_guest_id(guests),
+def _guest_fields(body: GuestIn) -> dict:
+    return {
         "name": body.name.strip(),
         "party_size": body.party_size,
+        "confirmed_size": body.confirmed_size if body.confirmed_size is not None else body.party_size,
         "family_names": body.family_names.strip(),
         "table_no": body.table_no.strip(),
         "invite_status": body.invite_status,
         "confirm_status": body.confirm_status,
         "note": body.note.strip(),
     }
+
+
+@app.post("/api/guests")
+def create_guest(body: GuestIn):
+    _validate_statuses(body.invite_status, body.confirm_status)
+    guests = storage.load_guests()
+    tables = storage.load_tables()
+    config = storage.load_config()
+    fields = _guest_fields(body)
+    guest = {"id": storage.next_guest_id(guests), **fields}
+    _check_capacity(guests, tables, config, guest["table_no"], _seat_size(guest), force=body.force)
     guests.append(guest)
     storage.save_guests(guests)
     return guest
@@ -180,18 +194,10 @@ def update_guest(gid: int, body: GuestIn):
     tables = storage.load_tables()
     config = storage.load_config()
     guest = _find_guest(guests, gid)
-    incoming = body.party_size if body.confirm_status != "不参加" else 0
-    _check_capacity(guests, tables, config, body.table_no, incoming,
+    fields = _guest_fields(body)
+    _check_capacity(guests, tables, config, fields["table_no"], _seat_size(fields),
                     exclude_ids={gid}, force=body.force)
-    guest.update({
-        "name": body.name.strip(),
-        "party_size": body.party_size,
-        "family_names": body.family_names.strip(),
-        "table_no": body.table_no.strip(),
-        "invite_status": body.invite_status,
-        "confirm_status": body.confirm_status,
-        "note": body.note.strip(),
-    })
+    guest.update(fields)
     storage.save_guests(guests)
     return guest
 
@@ -215,10 +221,13 @@ def move_guest(gid: int, body: MoveIn):
     target = body.target_table.strip()
 
     split = not body.with_family and guest["party_size"] > 1
-    moving_size = 1 if split else guest["party_size"]
-    if guest["confirm_status"] == "不参加":
-        moving_size = 0
-    _check_capacity(guests, tables, config, target, moving_size,
+    if split:
+        # 本人 1 人换桌；确认人数同步拆分（本人至多占 1）
+        person_confirmed = min(1, guest["confirmed_size"])
+        moving = {**guest, "party_size": 1, "confirmed_size": person_confirmed}
+    else:
+        moving = guest
+    _check_capacity(guests, tables, config, target, _seat_size(moving),
                     exclude_ids={gid}, force=body.force)
 
     result = {"moved": None, "family_left": None}
@@ -227,6 +236,7 @@ def move_guest(gid: int, body: MoveIn):
             "id": storage.next_guest_id(guests),
             "name": f"{guest['name']}的家属",
             "party_size": guest["party_size"] - 1,
+            "confirmed_size": guest["confirmed_size"] - min(1, guest["confirmed_size"]),
             "family_names": guest["family_names"],
             "table_no": guest["table_no"],
             "invite_status": guest["invite_status"],
@@ -234,7 +244,8 @@ def move_guest(gid: int, body: MoveIn):
             "note": f"由「{guest['name']}」换桌拆分",
         }
         guests.append(family)
-        guest.update({"party_size": 1, "family_names": "", "table_no": target})
+        guest.update({"party_size": 1, "confirmed_size": min(1, guest["confirmed_size"]),
+                      "family_names": "", "table_no": target})
         result["family_left"] = family
     else:
         guest["table_no"] = target
@@ -251,7 +262,8 @@ def create_table(body: TableIn):
     no = body.table_no.strip()
     if any(t["table_no"] == no for t in tables):
         raise HTTPException(409, f"桌号「{no}」已存在")
-    table = {"table_no": no, "label": body.label.strip(), "capacity": body.capacity}
+    table = {"table_no": no, "label": body.label.strip(), "capacity": body.capacity,
+             "x": body.x, "y": body.y}
     tables.append(table)
     storage.save_tables(tables)
     return table
@@ -273,7 +285,24 @@ def update_table(table_no: str, body: TableIn):
             if g["table_no"] == table_no:
                 g["table_no"] = new_no
         storage.save_guests(guests)
-    table.update({"table_no": new_no, "label": body.label.strip(), "capacity": body.capacity})
+    table.update({"table_no": new_no, "label": body.label.strip(), "capacity": body.capacity,
+                  "x": body.x, "y": body.y})
+    storage.save_tables(tables)
+    return table
+
+
+@app.put("/api/tables/{table_no}/position")
+def move_table(table_no: str, body: dict):
+    """仅更新桌子坐标（平面图拖动摆位）。"""
+    tables = storage.load_tables()
+    table = next((t for t in tables if t["table_no"] == table_no), None)
+    if table is None:
+        raise HTTPException(404, f"桌号「{table_no}」不存在")
+    try:
+        table["x"] = round(float(body["x"]), 1)
+        table["y"] = round(float(body["y"]), 1)
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "需要数字坐标 x、y（单位米）")
     storage.save_tables(tables)
     return table
 
@@ -302,7 +331,13 @@ def delete_table(table_no: str):
 
 @app.put("/api/config")
 def update_config(body: ConfigIn):
-    config = {"default_capacity": body.default_capacity, "budget_total": body.budget_total}
+    config = {
+        "default_capacity": body.default_capacity,
+        "budget_total": body.budget_total,
+        "venue_width": body.venue_width,
+        "venue_depth": body.venue_depth,
+        "table_diameter": body.table_diameter,
+    }
     storage.save_config(config)
     return config
 

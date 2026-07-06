@@ -1,3 +1,6 @@
 ﻿配置项,值
 default_capacity,10
 budget_total,100
+venue_width,18
+venue_depth,25
+table_diameter,1.8

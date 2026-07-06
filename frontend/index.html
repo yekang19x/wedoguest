@@ -76,32 +76,52 @@
   }
   input:focus, select:focus, textarea:focus { outline: 2px solid rgba(163,59,77,.25); }
 
-  /* ---- 桌位图 ---- */
-  #floor-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px;
+  /* ---- 会场平面图 ---- */
+  .floor-layout { display: flex; gap: 14px; align-items: flex-start; }
+  #venue-box { flex: 1; min-width: 0; }
+  #venue {
+    position: relative; background: #fffdf9;
+    border: 2px solid #d8c9b4; border-radius: 6px;
+    box-shadow: var(--shadow); overflow: hidden;
+    background-image: linear-gradient(#f1e9dc 1px, transparent 1px),
+                      linear-gradient(90deg, #f1e9dc 1px, transparent 1px);
   }
-  .table-card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 12px; box-shadow: var(--shadow); min-height: 150px;
-    display: flex; flex-direction: column;
+  .venue-scale-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .stage {
+    position: absolute; background: linear-gradient(180deg, #e8d3a0, #dfc188);
+    border: 1px solid #c9a95f; border-radius: 0 0 10px 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #7a5f22; font-weight: 700; letter-spacing: 4px; z-index: 1;
   }
-  .table-card.dragover { outline: 2px dashed var(--gold); outline-offset: 2px; background: #fffbf0; }
-  .table-card .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .table-no-badge {
-    background: var(--primary); color: #fff; border-radius: 50%;
-    min-width: 34px; height: 34px; padding: 0 6px;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 13px;
+  .runway {
+    position: absolute; background: linear-gradient(180deg, #dfc188, #ecdcb4);
+    border: 1px solid #c9a95f; border-top: none; border-radius: 0 0 6px 6px;
+    display: flex; align-items: center; justify-content: center; z-index: 1;
   }
-  .table-card.unassigned-card .table-no-badge { background: var(--muted); border-radius: 8px; }
-  .table-card .tlabel { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .table-card .cap { font-size: 12px; color: var(--muted); }
-  .table-card .cap.full { color: var(--danger); font-weight: 700; }
-  .capbar { height: 5px; background: var(--line); border-radius: 3px; margin: 4px 0 8px; overflow: hidden; }
-  .capbar > div { height: 100%; background: var(--ok); border-radius: 3px; }
-  .capbar > div.warn { background: var(--warn); }
-  .capbar > div.full { background: var(--danger); }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; flex: 1; }
+  .runway span {
+    writing-mode: vertical-lr; color: #7a5f22; font-weight: 600; letter-spacing: 6px; font-size: 12px;
+  }
+  .table-dot {
+    position: absolute; border-radius: 50%; z-index: 2;
+    background: radial-gradient(circle at 35% 30%, #ffffff, #f3ece1);
+    border: 2px solid var(--primary); box-shadow: 0 2px 6px rgba(61,50,41,.18);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: grab; user-select: none; touch-action: none; text-align: center; line-height: 1.15;
+  }
+  .table-dot.dragging { opacity: .75; cursor: grabbing; z-index: 5; box-shadow: 0 6px 16px rgba(61,50,41,.35); }
+  .table-dot.dragover { border-color: var(--gold); border-style: dashed; background: #fffbf0; }
+  .table-dot.empty { border-style: dashed; border-color: #c9b8a0; }
+  .table-dot.overfull { border-color: var(--danger); }
+  .table-dot .tno { font-weight: 700; color: var(--primary-dark); }
+  .table-dot.overfull .tocc { color: var(--danger); font-weight: 700; }
+  .table-dot .tocc { color: var(--muted); }
+  #side-panel {
+    width: 240px; flex-shrink: 0; background: var(--card);
+    border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow);
+  }
+  #side-panel h4 { margin: 0 0 8px; font-size: 14px; }
+  #side-panel .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
   .chip {
     background: #f6efe6; border: 1px solid var(--line); border-radius: 16px;
     padding: 3px 10px; font-size: 13px; cursor: grab; user-select: none;
@@ -113,12 +133,11 @@
   .chip.pending-status { border-style: dashed; }
   .chip .sz { background: var(--gold); color: #fff; border-radius: 10px; padding: 0 6px; font-size: 11px; }
   .empty-note { color: var(--muted); font-size: 12px; padding: 6px 0; }
-  .add-table-card {
-    border: 2px dashed var(--line); border-radius: 14px; min-height: 150px;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--muted); cursor: pointer; font-size: 15px; background: transparent;
-  }
-  .add-table-card:hover { border-color: var(--primary); color: var(--primary); }
+  /* 桌详情弹窗 */
+  .detail-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .name { font-weight: 600; min-width: 72px; }
+  .detail-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
 
   /* ---- 表格 ---- */
   table.list { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
@@ -185,9 +204,21 @@
   <div class="tab-page active" id="tab-floor">
     <div class="toolbar">
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
-      <span class="hint">💡 拖动宾客名牌到目标桌即可换桌；点击名牌可编辑；点击桌卡「编辑」可单桌配置。</span>
+      <span class="hint" id="venue-info"></span>
+      <div class="spacer"></div>
+      <span class="hint">💡 拖动圆桌调整摆位；点击圆桌看单桌详情；把右侧宾客名牌拖到桌上即可入座。</span>
     </div>
-    <div id="floor-grid"></div>
+    <div class="floor-layout">
+      <div id="venue-box">
+        <div id="venue"></div>
+        <div class="venue-scale-note" id="venue-note"></div>
+      </div>
+      <div id="side-panel">
+        <h4>⏳ 未安排宾客 <span id="unassigned-count"></span></h4>
+        <div class="sub">拖动名牌到平面图的桌子上入座</div>
+        <div class="chips" id="unassigned-chips"></div>
+      </div>
+    </div>
   </div>
 
   <div class="tab-page" id="tab-guests">
@@ -200,7 +231,7 @@
     </div>
     <table class="list" id="guests-table">
       <thead><tr>
-        <th>姓名</th><th>人数</th><th>家属姓名</th><th>桌号</th>
+        <th>姓名</th><th>预算人数</th><th>确认人数</th><th>家属姓名</th><th>桌号</th>
         <th>邀请函</th><th>确认状态</th><th>备注</th><th style="width:190px">操作</th>
       </tr></thead>
       <tbody></tbody>
@@ -232,6 +263,22 @@
         <input type="number" id="cfg-budget" min="0">
         <span class="desc">统计条会将「预计出席」与该预算对比，超出时标红。</span>
       </div>
+      <h3>会场设置</h3>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>会场宽度（米，横向·舞台侧）</label>
+          <input type="number" id="cfg-venue-width" min="1" step="0.5">
+        </div>
+        <div class="form-row">
+          <label>会场长度（米，纵向）</label>
+          <input type="number" id="cfg-venue-depth" min="1" step="0.5">
+        </div>
+        <div class="form-row">
+          <label>桌子直径（米）</label>
+          <input type="number" id="cfg-table-diameter" min="0.5" step="0.1">
+        </div>
+      </div>
+      <span class="desc" style="display:block;margin-bottom:14px">平面图按以上尺寸等比例绘制，圆桌大小随桌径实时缩放。</span>
       <button class="btn" onclick="saveConfig()">保存设置</button>
     </div>
   </div>
@@ -304,6 +351,8 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-page').forEach(p =>
       p.classList.toggle('active', p.id === 'tab-' + currentTab));
+    // 平面图依赖容器实际宽度计算比例，页签隐藏期间宽度为 0，切回时需重绘
+    if (currentTab === 'floor' && state) renderFloor();
   };
 });
 
@@ -317,13 +366,20 @@ function renderAll() {
   renderSettings();
 }
 
+// 占座人数：已确认按确认人数，待确认按预算人数，不参加不占座（与后端口径一致）
+function seatSize(g) {
+  if (g.confirm_status === '不参加') return 0;
+  return g.confirm_status === '已确认' ? g.confirmed_size : g.party_size;
+}
+
 function renderStats() {
   const s = state.stats;
   const overBudget = s.budget_total > 0 && s.expected > s.budget_total;
   const items = [
     {lbl: '人数预算', num: s.budget_total},
+    {lbl: '预算合计', num: s.invited_total},
     {lbl: '预计出席', num: s.expected, over: overBudget},
-    {lbl: '已确认', num: s.confirmed},
+    {lbl: '已确认到场', num: s.confirmed},
     {lbl: '待确认', num: s.pending},
     {lbl: '不参加', num: s.declined},
     {lbl: '已安排桌位', num: s.seated},
@@ -340,79 +396,198 @@ function chipHtml(g) {
   const cls = ['chip'];
   if (g.confirm_status === '不参加') cls.push('declined');
   if (g.confirm_status === '待确认') cls.push('pending-status');
-  const title = `${g.name}｜${g.party_size}人` +
+  const title = `${g.name}｜预算${g.party_size}人/确认${g.confirmed_size}人` +
     (g.family_names ? `｜家属：${g.family_names}` : '') +
     `｜${g.invite_status}｜${g.confirm_status}` + (g.note ? `｜${g.note}` : '');
   return `<span class="${cls.join(' ')}" draggable="true" data-gid="${g.id}"
       title="${esc(title)}" onclick="openGuestModal(${g.id})">
-      <span class="n">${esc(g.name)}</span><span class="sz">${g.party_size}</span>
+      <span class="n">${esc(g.name)}</span><span class="sz">${seatSize(g)}</span>
     </span>`;
 }
 
+/* ---- 会场平面图（按米等比例绘制） ---- */
+
+// 舞台与 T 台走道的矩形（单位：米），T 台从舞台中央向场内延伸
+function stageRect(cfg) {
+  const w = Math.min(10, cfg.venue_width * 0.45);
+  const d = Math.min(3, cfg.venue_depth * 0.12);
+  return { x: (cfg.venue_width - w) / 2, y: 0, w, h: d };
+}
+function runwayRect(cfg) {
+  const s = stageRect(cfg);
+  const w = Math.max(1.2, Math.min(2.4, cfg.venue_width * 0.1));
+  const len = cfg.venue_depth * 0.42;
+  return { x: (cfg.venue_width - w) / 2, y: s.h, w, h: len };
+}
+function circleHitsRect(r, cx, cy, rad) {
+  return cx > r.x - rad && cx < r.x + r.w + rad && cy > r.y - rad && cy < r.y + r.h + rad;
+}
+
+// 给没有坐标的桌子自动找空位（网格扫描，避开舞台/T台/已摆放的桌）
+function autoLayout(tables, cfg) {
+  const D = cfg.table_diameter, rad = D / 2;
+  const stage = stageRect(cfg), runway = runwayRect(cfg);
+  const margin = rad + 0.6, step = D + 1.2;
+  const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
+  const pos = {};
+  for (const t of tables.filter(t => t.x == null || t.y == null)) {
+    let found = null;
+    outer:
+    for (let y = margin; y <= cfg.venue_depth - margin; y += step) {
+      for (let x = margin; x <= cfg.venue_width - margin; x += step) {
+        if (circleHitsRect(stage, x, y, rad) || circleHitsRect(runway, x, y, rad)) continue;
+        if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < (D * 1.15) ** 2)) continue;
+        found = { x, y }; break outer;
+      }
+    }
+    found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
+    pos[t.table_no] = found;
+    placed.push([found.x, found.y]);
+  }
+  return pos;
+}
+
 function renderFloor() {
-  const grid = document.getElementById('floor-grid');
-  const tableCards = state.tables.map(t => {
-    const pct = Math.min(100, Math.round(t.occupied / t.effective_capacity * 100));
-    const barCls = t.occupied > t.effective_capacity ? 'full' : (pct >= 80 ? 'warn' : '');
-    const capCls = t.occupied > t.effective_capacity ? 'cap full' : 'cap';
-    const chips = t.guests.map(chipHtml).join('') ||
-      '<div class="empty-note">空桌 — 拖宾客到这里</div>';
-    return `
-      <div class="table-card" data-table="${esc(t.table_no)}">
-        <div class="head">
-          <span class="table-no-badge">${esc(t.table_no)}</span>
-          <span class="tlabel" title="${esc(t.label)}">${esc(t.label) || '<span style="color:var(--muted)">未命名</span>'}</span>
-          <span class="${capCls}">${t.occupied}/${t.effective_capacity}人${t.capacity === null ? '（默认）' : ''}</span>
-          <button class="btn sm ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑</button>
-        </div>
-        <div class="capbar"><div class="${barCls}" style="width:${pct}%"></div></div>
-        <div class="chips">${chips}</div>
+  const cfg = state.config;
+  const venue = document.getElementById('venue');
+  const box = document.getElementById('venue-box');
+  const scale = Math.max(10, (box.clientWidth || 800) / cfg.venue_width); // px / 米
+  const px = m => m * scale;
+  venue.style.height = px(cfg.venue_depth) + 'px';
+  venue.style.backgroundSize = `${px(1)}px ${px(1)}px`;  // 1米网格
+
+  document.getElementById('venue-info').textContent =
+    `会场 ${cfg.venue_width} × ${cfg.venue_depth} 米 · 桌径 ${cfg.table_diameter} 米（可在「设置」调整）`;
+  document.getElementById('venue-note').textContent =
+    `比例约 1 米 = ${Math.round(scale)} 像素，背景网格为 1 米；圆桌按直径 ${cfg.table_diameter} 米等比绘制`;
+
+  const stage = stageRect(cfg), runway = runwayRect(cfg);
+  const autoPos = autoLayout(state.tables, cfg);
+  const d = cfg.table_diameter;
+  const fontBase = Math.max(9, Math.min(15, px(d) * 0.17));
+
+  const dots = state.tables.map(t => {
+    const p = (t.x != null && t.y != null) ? { x: t.x, y: t.y } : autoPos[t.table_no];
+    const over = t.occupied > t.effective_capacity;
+    const cls = ['table-dot'];
+    if (over) cls.push('overfull');
+    if (!t.guests.length) cls.push('empty');
+    const title = `${t.table_no}${t.label ? '｜' + t.label : ''}｜${t.occupied}/${t.effective_capacity}人` +
+      (t.guests.length ? `｜${t.guests.map(g => g.name).join('、')}` : '｜空桌') +
+      (t.x == null ? '｜（自动摆放，拖动后保存位置）' : '');
+    return `<div class="${cls.join(' ')}" data-table="${esc(t.table_no)}"
+        data-x="${p.x}" data-y="${p.y}" title="${esc(title)}"
+        style="left:${px(p.x - d / 2)}px; top:${px(p.y - d / 2)}px;
+               width:${px(d)}px; height:${px(d)}px; font-size:${fontBase}px">
+        <span class="tno" style="font-size:${fontBase * 1.15}px">${esc(t.table_no)}</span>
+        <span class="tocc">${t.occupied}/${t.effective_capacity}</span>
       </div>`;
   }).join('');
 
-  const unassignedChips = state.unassigned_guests.map(chipHtml).join('') ||
+  venue.innerHTML = `
+    <div class="stage" style="left:${px(stage.x)}px; top:${px(stage.y)}px;
+         width:${px(stage.w)}px; height:${px(stage.h)}px; font-size:${Math.max(11, px(1) * 0.5)}px">舞台</div>
+    <div class="runway" style="left:${px(runway.x)}px; top:${px(runway.y)}px;
+         width:${px(runway.w)}px; height:${px(runway.h)}px"><span>T 台</span></div>
+    ${dots}`;
+
+  const chipsBox = document.getElementById('unassigned-chips');
+  chipsBox.innerHTML = state.unassigned_guests.map(chipHtml).join('') ||
     '<div class="empty-note">没有未安排的宾客 🎉</div>';
-  const unassignedCard = `
-    <div class="table-card unassigned-card" data-table="">
-      <div class="head">
-        <span class="table-no-badge">待定</span>
-        <span class="tlabel">未安排宾客</span>
-        <span class="cap">${state.stats.unseated}人</span>
-      </div>
-      <div class="chips">${unassignedChips}</div>
-    </div>`;
+  document.getElementById('unassigned-count').textContent = `（${state.stats.unseated} 人）`;
 
-  grid.innerHTML = unassignedCard + tableCards +
-    `<div class="add-table-card" onclick="openTableModal()">＋ 新增桌子</div>`;
-
-  bindDragAndDrop(grid);
+  bindFloorInteractions(venue, scale);
 }
 
-function bindDragAndDrop(grid) {
-  grid.querySelectorAll('.chip').forEach(chip => {
+function bindFloorInteractions(venue, scale) {
+  // 未安排宾客名牌：HTML5 拖拽到圆桌入座
+  document.querySelectorAll('#unassigned-chips .chip').forEach(chip => {
     chip.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', chip.dataset.gid);
       e.dataTransfer.effectAllowed = 'move';
     });
   });
-  grid.querySelectorAll('.table-card').forEach(card => {
-    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('dragover'); });
-    card.addEventListener('dragleave', () => card.classList.remove('dragover'));
-    card.addEventListener('drop', e => {
+
+  venue.querySelectorAll('.table-dot').forEach(dot => {
+    const no = dot.dataset.table;
+
+    dot.addEventListener('dragover', e => { e.preventDefault(); dot.classList.add('dragover'); });
+    dot.addEventListener('dragleave', () => dot.classList.remove('dragover'));
+    dot.addEventListener('drop', e => {
       e.preventDefault();
-      card.classList.remove('dragover');
+      dot.classList.remove('dragover');
       const gid = parseInt(e.dataTransfer.getData('text/plain'), 10);
       if (!gid) return;
-      const target = card.dataset.table;
       const g = guestById(gid);
-      if (!g || g.table_no === target) return;
-      if (g.party_size > 1) {
-        openMoveModal(gid, target);   // 多人随行：弹窗确认是否带家属
-      } else {
-        doMove(gid, target, true);
-      }
+      if (!g || g.table_no === no) return;
+      if (g.party_size > 1) openMoveModal(gid, no);
+      else doMove(gid, no, true);
+    });
+
+    // 指针拖动摆位；位移极小视为点击 → 打开桌详情
+    dot.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      floorDragging = true;   // 拖动期间禁止 resize 重绘，否则 DOM 重建会中断拖拽
+      const cfg = state.config, d = cfg.table_diameter;
+      const start = { px: e.clientX, py: e.clientY, left: dot.offsetLeft, top: dot.offsetTop };
+      let moved = false;
+      dot.setPointerCapture(e.pointerId);
+
+      const onMove = ev => {
+        const dx = ev.clientX - start.px, dy = ev.clientY - start.py;
+        if (!moved && Math.hypot(dx, dy) < 5) return;
+        moved = true;
+        dot.classList.add('dragging');
+        const maxL = venue.clientWidth - d * scale, maxT = venue.clientHeight - d * scale;
+        dot.style.left = Math.max(0, Math.min(maxL, start.left + dx)) + 'px';
+        dot.style.top = Math.max(0, Math.min(maxT, start.top + dy)) + 'px';
+      };
+      const onUp = async () => {
+        floorDragging = false;
+        dot.removeEventListener('pointermove', onMove);
+        dot.removeEventListener('pointerup', onUp);
+        dot.classList.remove('dragging');
+        if (!moved) { openTableDetail(no); return; }
+        const x = (dot.offsetLeft / scale) + d / 2;
+        const y = (dot.offsetTop / scale) + d / 2;
+        try {
+          await api('PUT', `/api/tables/${encodeURIComponent(no)}/position`,
+            { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+          await reload();
+          toast(`桌「${no}」已摆放到 (${(Math.round(x * 10) / 10)}, ${Math.round(y * 10) / 10}) 米`);
+        } catch (err) { toast(err.message, true); await reload(); }
+      };
+      dot.addEventListener('pointermove', onMove);
+      dot.addEventListener('pointerup', onUp);
     });
   });
+}
+
+/* ---- 桌详情弹窗 ---- */
+function openTableDetail(tableNo) {
+  const t = tableByNo(tableNo);
+  if (!t) return;
+  const rows = t.guests.map(g => `
+    <div class="detail-row">
+      <span class="name">${esc(g.name)}</span>
+      <span class="meta">占${seatSize(g)}座（预算${g.party_size}/确认${g.confirmed_size}）
+        ${g.family_names ? '· ' + esc(g.family_names) : ''}</span>
+      ${statusTag(g.confirm_status)}
+      <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
+      <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
+    </div>`).join('') || '<div class="empty-note">空桌 — 从右侧「未安排宾客」拖名牌进来</div>';
+  showModal(`
+    <h3>${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}
+      <span style="font-weight:400;font-size:13px;color:var(--muted)">
+        ${t.occupied}/${t.effective_capacity} 人${t.capacity === null ? '（默认容量）' : ''}
+        ${t.x != null ? `· 位于 (${t.x}, ${t.y}) 米` : '· 未摆放（自动位置）'}
+      </span></h3>
+    <div>${rows}</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑桌子</button>
+      <button class="btn" onclick="closeModal()">关闭</button>
+    </div>`);
 }
 
 function statusTag(st) {
@@ -437,6 +612,9 @@ function renderGuestsTable() {
       <tr>
         <td><b>${esc(g.name)}</b></td>
         <td>${g.party_size}</td>
+        <td>${g.confirm_status === '已确认'
+              ? `<b style="color:var(--ok)">${g.confirmed_size}</b>`
+              : `<span style="color:var(--muted)">${g.confirmed_size}</span>`}</td>
         <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
         <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
         <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
@@ -449,7 +627,7 @@ function renderGuestsTable() {
         </div></td>
       </tr>`).join('');
   document.querySelector('#guests-table tbody').innerHTML =
-    rows || '<tr><td colspan="8" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
+    rows || '<tr><td colspan="9" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
 }
 
 function renderTablesTable() {
@@ -473,6 +651,9 @@ function renderTablesTable() {
 function renderSettings() {
   document.getElementById('cfg-capacity').value = state.config.default_capacity;
   document.getElementById('cfg-budget').value = state.config.budget_total;
+  document.getElementById('cfg-venue-width').value = state.config.venue_width;
+  document.getElementById('cfg-venue-depth').value = state.config.venue_depth;
+  document.getElementById('cfg-table-diameter').value = state.config.table_diameter;
 }
 
 /* ================= 弹窗 ================= */
@@ -502,10 +683,13 @@ function openGuestModal(gid) {
   showModal(`
     <h3>${g ? '编辑宾客' : '新增宾客'}</h3>
     <div class="form-grid">
-      <div class="form-row"><label>姓名 *</label>
+      <div class="form-row full"><label>姓名 *</label>
         <input id="gm-name" value="${esc(g?.name ?? '')}"></div>
-      <div class="form-row"><label>总人数（含本人）</label>
+      <div class="form-row"><label>预算人数（含本人）</label>
         <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}"></div>
+      <div class="form-row"><label>确认人数（确认会到，留空 = 同预算）</label>
+        <input id="gm-confirmed-size" type="number" min="0" value="${g?.confirmed_size ?? ''}"
+               placeholder="默认 = 预算人数"></div>
       <div class="form-row full"><label>家属姓名（多个用逗号分隔）</label>
         <input id="gm-family" value="${esc(g?.family_names ?? '')}" placeholder="如：李娜,张小宝"></div>
       <div class="form-row"><label>桌号</label>
@@ -532,9 +716,11 @@ function openGuestModal(gid) {
 }
 
 async function saveGuest(gid) {
+  const confirmedRaw = document.getElementById('gm-confirmed-size').value.trim();
   const body = {
     name: document.getElementById('gm-name').value.trim(),
     party_size: parseInt(document.getElementById('gm-size').value, 10) || 1,
+    confirmed_size: confirmedRaw === '' ? null : parseInt(confirmedRaw, 10),
     family_names: document.getElementById('gm-family').value.trim(),
     table_no: document.getElementById('gm-table').value,
     invite_status: document.getElementById('gm-invite').value,
@@ -637,10 +823,13 @@ function openTableModal(tableNo) {
 
 async function saveTable(origNo) {
   const capRaw = document.getElementById('tm-cap').value.trim();
+  const orig = origNo ? tableByNo(origNo) : null;
   const body = {
     table_no: document.getElementById('tm-no').value.trim(),
     label: document.getElementById('tm-label').value.trim(),
     capacity: capRaw ? parseInt(capRaw, 10) : null,
+    x: orig?.x ?? null,   // 保留已摆放的位置
+    y: orig?.y ?? null,
   };
   if (!body.table_no) { toast('请填写桌号', true); return; }
   try {
@@ -671,9 +860,14 @@ async function saveConfig() {
   const body = {
     default_capacity: parseInt(document.getElementById('cfg-capacity').value, 10),
     budget_total: parseInt(document.getElementById('cfg-budget').value, 10),
+    venue_width: parseFloat(document.getElementById('cfg-venue-width').value),
+    venue_depth: parseFloat(document.getElementById('cfg-venue-depth').value),
+    table_diameter: parseFloat(document.getElementById('cfg-table-diameter').value),
   };
   if (!body.default_capacity || body.default_capacity < 1) { toast('默认容量至少为 1', true); return; }
   if (isNaN(body.budget_total) || body.budget_total < 0) { toast('人数预算不能为负', true); return; }
+  if (!(body.venue_width > 0) || !(body.venue_depth > 0)) { toast('会场长宽必须大于 0', true); return; }
+  if (!(body.table_diameter > 0)) { toast('桌子直径必须大于 0', true); return; }
   try {
     await api('PUT', '/api/config', body);
     await reload();
@@ -682,6 +876,12 @@ async function saveConfig() {
 }
 
 /* ================= 启动 ================= */
+let resizeTimer = null;
+let floorDragging = false;  // 圆桌拖动中，见 bindFloorInteractions
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (state && !floorDragging) renderFloor(); }, 200);
+});
 reload().catch(e => toast('加载失败：' + e.message, true));
 </script>
 </body>

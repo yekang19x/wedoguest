@@ -16,14 +16,23 @@ TABLES_CSV = DATA_DIR / "tables.csv"
 CONFIG_CSV = DATA_DIR / "config.csv"
 
 # guests.xlsx 表头（中文列名便于直接用 Excel 打开维护）
-GUEST_HEADERS = ["ID", "姓名", "总人数", "家属姓名", "桌号", "邀请函状态", "确认状态", "备注"]
-TABLE_HEADERS = ["桌号", "备注名", "容纳人数"]
+GUEST_HEADERS = ["ID", "姓名", "预算人数", "确认人数", "家属姓名", "桌号", "邀请函状态", "确认状态", "备注"]
+# 旧版列名 → 新版列名（按表头读取，兼容旧文件平滑升级）
+GUEST_HEADER_ALIASES = {"总人数": "预算人数"}
+TABLE_HEADERS = ["桌号", "备注名", "容纳人数", "X坐标", "Y坐标"]
 CONFIG_HEADERS = ["配置项", "值"]
 
 INVITE_STATUSES = ["未发送", "已发送"]
 CONFIRM_STATUSES = ["待确认", "已确认", "不参加"]
 
-DEFAULT_CONFIG = {"default_capacity": 10, "budget_total": 100}
+DEFAULT_CONFIG = {
+    "default_capacity": 10,   # 默认单桌容纳人数
+    "budget_total": 100,      # 人数预算
+    "venue_width": 18.0,      # 会场宽度（米，横向，舞台所在边）
+    "venue_depth": 25.0,      # 会场长度（米，纵向）
+    "table_diameter": 1.8,    # 桌子直径（米）
+}
+CONFIG_INT_KEYS = {"default_capacity", "budget_total"}
 
 
 # ---------- 通用 ----------
@@ -39,18 +48,18 @@ def ensure_data_files():
         save_config(dict(DEFAULT_CONFIG))
     if not TABLES_CSV.exists():
         save_tables([
-            {"table_no": "主桌", "label": "新人与主宾", "capacity": 12},
-            {"table_no": "1", "label": "男方亲戚", "capacity": None},
-            {"table_no": "2", "label": "女方亲戚", "capacity": None},
-            {"table_no": "3", "label": "同事朋友", "capacity": None},
+            {"table_no": "主桌", "label": "新人与主宾", "capacity": 12, "x": 12.5, "y": 5.5},
+            {"table_no": "1", "label": "男方亲戚", "capacity": None, "x": 4.5, "y": 12.0},
+            {"table_no": "2", "label": "女方亲戚", "capacity": None, "x": 13.5, "y": 12.0},
+            {"table_no": "3", "label": "同事朋友", "capacity": None, "x": None, "y": None},
         ])
     if not GUESTS_XLSX.exists():
         save_guests([
-            {"id": 1, "name": "张伟", "party_size": 3, "family_names": "李娜,张小宝",
+            {"id": 1, "name": "张伟", "party_size": 3, "confirmed_size": 2, "family_names": "李娜,张小宝",
              "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家"},
-            {"id": 2, "name": "王芳", "party_size": 2, "family_names": "刘强",
+            {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 2, "family_names": "刘强",
              "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": ""},
-            {"id": 3, "name": "陈静", "party_size": 1, "family_names": "",
+            {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 1, "family_names": "",
              "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学"},
         ])
 
@@ -60,21 +69,36 @@ def ensure_data_files():
 def load_guests() -> list[dict]:
     wb = load_workbook(GUESTS_XLSX)
     ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    # 按表头名定位列，兼容旧版列名与用户在 Excel 里调整过的列顺序
+    header = next(rows, None) or ()
+    col = {}
+    for i, h in enumerate(header):
+        name = str(h or "").strip()
+        col[GUEST_HEADER_ALIASES.get(name, name)] = i
+
+    def cell(vals, name):
+        i = col.get(name)
+        return vals[i] if i is not None and i < len(vals) else None
+
     guests = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if row is None or row[0] is None:
+    for row in rows:
+        if row is None or cell(row, "ID") is None:
             continue
-        # 兼容手工编辑 Excel 时留下的短行
-        vals = list(row) + [None] * (len(GUEST_HEADERS) - len(row))
+        party_size = int(cell(row, "预算人数") or 1)
+        conf_raw = cell(row, "确认人数")
+        conf_str = str(conf_raw).strip() if conf_raw is not None else ""
         guests.append({
-            "id": int(vals[0]),
-            "name": str(vals[1] or "").strip(),
-            "party_size": int(vals[2] or 1),
-            "family_names": str(vals[3] or "").strip(),
-            "table_no": str(vals[4] or "").strip(),
-            "invite_status": str(vals[5] or "未发送").strip(),
-            "confirm_status": str(vals[6] or "待确认").strip(),
-            "note": str(vals[7] or "").strip(),
+            "id": int(cell(row, "ID")),
+            "name": str(cell(row, "姓名") or "").strip(),
+            "party_size": party_size,
+            # 旧文件无此列 / 单元格留空 → 默认等于预算人数
+            "confirmed_size": int(float(conf_str)) if conf_str else party_size,
+            "family_names": str(cell(row, "家属姓名") or "").strip(),
+            "table_no": str(cell(row, "桌号") or "").strip(),
+            "invite_status": str(cell(row, "邀请函状态") or "未发送").strip(),
+            "confirm_status": str(cell(row, "确认状态") or "待确认").strip(),
+            "note": str(cell(row, "备注") or "").strip(),
         })
     return guests
 
@@ -86,11 +110,11 @@ def save_guests(guests: list[dict]):
     ws.append(GUEST_HEADERS)
     for g in guests:
         ws.append([
-            g["id"], g["name"], g["party_size"], g["family_names"],
+            g["id"], g["name"], g["party_size"], g["confirmed_size"], g["family_names"],
             g["table_no"], g["invite_status"], g["confirm_status"], g["note"],
         ])
     # 设置列宽，直接用 Excel 打开时可读性更好
-    widths = [6, 14, 8, 24, 8, 12, 10, 24]
+    widths = [6, 14, 10, 10, 24, 8, 12, 10, 24]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
     ws.freeze_panes = "A2"
@@ -109,13 +133,25 @@ def load_tables() -> list[dict]:
     tables = []
     with open(TABLES_CSV, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            cap_raw = (row.get("容纳人数") or "").strip()
+            def num(key):
+                raw = (row.get(key) or "").strip()
+                return float(raw) if raw else None
+
+            cap = num("容纳人数")
             tables.append({
                 "table_no": (row.get("桌号") or "").strip(),
                 "label": (row.get("备注名") or "").strip(),
-                "capacity": int(cap_raw) if cap_raw else None,
+                "capacity": int(cap) if cap is not None else None,
+                "x": num("X坐标"),   # 桌心坐标（米），空 = 未摆放，由前端自动布局
+                "y": num("Y坐标"),
             })
     return [t for t in tables if t["table_no"]]
+
+
+def _fmt_num(v):
+    if v is None:
+        return ""
+    return int(v) if float(v).is_integer() else round(float(v), 1)
 
 
 def save_tables(tables: list[dict]):
@@ -128,6 +164,7 @@ def save_tables(tables: list[dict]):
             writer.writerow([
                 t["table_no"], t["label"],
                 "" if t["capacity"] is None else t["capacity"],
+                _fmt_num(t.get("x")), _fmt_num(t.get("y")),
             ])
     _atomic_replace(tmp, TABLES_CSV)
 
@@ -141,7 +178,7 @@ def load_config() -> dict:
             key = (row.get("配置项") or "").strip()
             val = (row.get("值") or "").strip()
             if key in config and val:
-                config[key] = int(val)
+                config[key] = int(float(val)) if key in CONFIG_INT_KEYS else float(val)
     return config
 
 
@@ -151,5 +188,5 @@ def save_config(config: dict):
         writer = csv.writer(f)
         writer.writerow(CONFIG_HEADERS)
         for key, val in config.items():
-            writer.writerow([key, val])
+            writer.writerow([key, _fmt_num(val) if key not in CONFIG_INT_KEYS else val])
     _atomic_replace(tmp, CONFIG_CSV)
