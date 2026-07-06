@@ -90,17 +90,21 @@
   .venue-scale-note { color: var(--muted); font-size: 12px; margin-top: 6px; text-align: center; }
   .stage {
     position: absolute; background: linear-gradient(180deg, #e9dcc3, #ddcba4);
-    border: 1px solid #c8b48a; border-radius: 0 0 10px 10px;
+    border: 1px solid #c8b48a; border-top: none;
+    border-radius: 0 0 50% 50% / 0 0 100% 100%;  /* 半圆凸向场内 */
     display: flex; align-items: center; justify-content: center;
     color: #86754e; font-weight: 700; letter-spacing: 4px; z-index: 1;
+    padding-bottom: 8px;
   }
-  .runway {
-    position: absolute; background: linear-gradient(180deg, #ddcba4, #ecdfc6);
-    border: 1px solid #c8b48a; border-top: none; border-radius: 0 0 6px 6px;
-    display: flex; align-items: center; justify-content: center; z-index: 1;
+  .aisle {
+    position: absolute; z-index: 1;
+    background: linear-gradient(180deg, rgba(201, 176, 131, .16), rgba(201, 176, 131, .05));
+    border-left: 1px dashed #d9c6a6; border-right: 1px dashed #d9c6a6;
+    display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px;
   }
-  .runway span {
-    writing-mode: vertical-lr; color: #86754e; font-weight: 600; letter-spacing: 6px; font-size: 12px;
+  .aisle span {
+    writing-mode: vertical-lr; color: #b3a077; font-weight: 600;
+    letter-spacing: 8px; font-size: 12px; opacity: .75;
   }
   .table-dot {
     position: absolute; border-radius: 50%; z-index: 2;
@@ -116,6 +120,10 @@
   .table-dot .tno { font-weight: 700; color: var(--primary-dark); }
   .table-dot.overfull .tocc { color: var(--danger); font-weight: 700; }
   .table-dot .tocc { color: var(--muted); }
+  .table-dot .tlbl {
+    font-size: .78em; color: var(--muted); max-width: 88%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   #side-panel {
     width: 240px; flex-shrink: 0; background: var(--card);
     border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow);
@@ -419,17 +427,17 @@ function chipHtml(g) {
 
 /* ---- 会场平面图（按米等比例绘制） ---- */
 
-// 舞台与 T 台走道的矩形（单位：米），T 台从舞台中央向场内延伸
+// 半圆舞台的包围盒（单位：米，凸向场内，居中贴顶）
 function stageRect(cfg) {
   const w = Math.min(10, cfg.venue_width * 0.45);
   const d = Math.min(3, cfg.venue_depth * 0.12);
   return { x: (cfg.venue_width - w) / 2, y: 0, w, h: d };
 }
-function runwayRect(cfg) {
+// 场地中线通道：从舞台下方贯穿到场底，把桌区分为左右两边
+function aisleRect(cfg) {
   const s = stageRect(cfg);
   const w = Math.max(1.2, Math.min(2.4, cfg.venue_width * 0.1));
-  const len = cfg.venue_depth * 0.42;
-  return { x: (cfg.venue_width - w) / 2, y: s.h, w, h: len };
+  return { x: (cfg.venue_width - w) / 2, y: s.h, w, h: cfg.venue_depth - s.h };
 }
 function circleHitsRect(r, cx, cy, rad) {
   return cx > r.x - rad && cx < r.x + r.w + rad && cy > r.y - rad && cy < r.y + r.h + rad;
@@ -440,16 +448,17 @@ function tableNoOrder(no) {
   return /^\d+$/.test(no) ? parseInt(no, 10) : Infinity;
 }
 
-// 给没有坐标的桌子自动找空位（避开舞台/T台/已摆放的桌）：
-// 主桌固定在 T 台右侧第一个位置；其余按桌号排序，以主桌为第一排水平线，
-// 从左往右、从上往下网格排列 → 数字桌号自然递增
+// 给没有坐标的桌子自动找空位（避开半圆舞台/中线通道/已摆放的桌）：
+// 场地以中线通道分为左右两边；主桌固定在通道右侧第一个位置；
+// 其余按桌号排序，以主桌为第一排水平线，从左往右、从上往下分列两侧
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
-  const stage = stageRect(cfg), runway = runwayRect(cfg);
+  const stage = stageRect(cfg), aisle = aisleRect(cfg);
   const margin = rad + 0.6, step = D + cfg.table_gap;
   // 与已摆放桌的最小圆心距：保证不贴脸即可（网格美观间距由 step 保证）；
-  // 间距配得极小时退到略小于 step，避免网格点互相误判
-  const minDist = Math.min(D + 0.3, step * 0.99);
+  // 间距配得极小时退到略小于 step，避免网格点互相误判。
+  // 0.25 而非 0.3：主桌固定位与网格点的距离恰为桌径+0.3，留出浮点余量
+  const minDist = Math.min(D + 0.25, step * 0.99);
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
   const isMain = t => t.table_no === '主桌';
@@ -458,9 +467,9 @@ function autoLayout(tables, cfg) {
     (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0) ||
     tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
     a.table_no.localeCompare(b.table_no, 'zh'));
-  // 第一排水平线：紧贴舞台下方；主桌固定位：T 台右侧第一个
+  // 第一排水平线：紧贴舞台下方；主桌固定位：中线通道右侧第一个
   const firstRowY = stage.h + rad + 0.6;
-  const mainSeat = { x: runway.x + runway.w + rad + 0.6, y: firstRowY };
+  const mainSeat = { x: aisle.x + aisle.w + rad + 0.6, y: firstRowY };
   for (const t of pending) {
     let found = null;
     if (isMain(t)) {
@@ -469,7 +478,7 @@ function autoLayout(tables, cfg) {
       outer:
       for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
         for (let x = margin; x <= cfg.venue_width - margin; x += step) {
-          if (circleHitsRect(stage, x, y, rad) || circleHitsRect(runway, x, y, rad)) continue;
+          if (circleHitsRect(stage, x, y, rad) || circleHitsRect(aisle, x, y, rad)) continue;
           if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < minDist ** 2)) continue;
           found = { x, y }; break outer;
         }
@@ -509,7 +518,7 @@ function renderFloor() {
   document.getElementById('venue-note').textContent =
     `比例约 1 米 = ${Math.round(scale)} 像素，背景网格为 1 米；圆桌按直径 ${cfg.table_diameter} 米等比绘制`;
 
-  const stage = stageRect(cfg), runway = runwayRect(cfg);
+  const stage = stageRect(cfg), aisle = aisleRect(cfg);
   const autoPos = autoLayout(state.tables, cfg);
   const d = cfg.table_diameter;
   const fontBase = Math.max(9, Math.min(15, px(d) * 0.17));
@@ -528,6 +537,7 @@ function renderFloor() {
         style="left:${px(p.x - d / 2)}px; top:${px(p.y - d / 2)}px;
                width:${px(d)}px; height:${px(d)}px; font-size:${fontBase}px">
         <span class="tno" style="font-size:${fontBase * 1.15}px">${esc(t.table_no)}</span>
+        ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
         <span class="tocc">${t.occupied}/${t.effective_capacity}</span>
       </div>`;
   }).join('');
@@ -535,8 +545,8 @@ function renderFloor() {
   venue.innerHTML = `
     <div class="stage" style="left:${px(stage.x)}px; top:${px(stage.y)}px;
          width:${px(stage.w)}px; height:${px(stage.h)}px; font-size:${Math.max(11, px(1) * 0.5)}px">舞台</div>
-    <div class="runway" style="left:${px(runway.x)}px; top:${px(runway.y)}px;
-         width:${px(runway.w)}px; height:${px(runway.h)}px"><span>T 台</span></div>
+    <div class="aisle" style="left:${px(aisle.x)}px; top:${px(aisle.y)}px;
+         width:${px(aisle.w)}px; height:${px(aisle.h)}px"><span>通 道</span></div>
     ${dots}`;
 
   const chipsBox = document.getElementById('unassigned-chips');
