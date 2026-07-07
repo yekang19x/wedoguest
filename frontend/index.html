@@ -461,9 +461,9 @@
       <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
       <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 调换座位</button>
       <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
-        <input type="range" id="zoom-range" min="50" max="150" value="100" step="10"
+        <input type="range" id="zoom-range" min="100" max="180" value="150" step="10"
                style="width:110px;padding:0" oninput="setZoom(this.value)">
-        <span id="zoom-val">100%</span>
+        <span id="zoom-val">150%</span>
       </label>
     </div>
     <div class="floor-layout">
@@ -779,7 +779,7 @@ function autoLayout(tables, cfg) {
   return pos;
 }
 
-let zoomFactor = 1;
+let zoomFactor = 1.5;
 function setZoom(v) {
   zoomFactor = v / 100;
   document.getElementById('zoom-val').textContent = v + '%';
