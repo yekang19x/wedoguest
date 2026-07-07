@@ -487,6 +487,7 @@
           <div id="distribution-list"></div>
         </div>
         <div class="side-section unassigned">
+          <div id="floor-summary" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
           <h4>⏳ 未安排宾客 <span id="unassigned-count"></span></h4>
           <div class="sub">拖动名牌到平面图的桌子上入座</div>
           <div class="chips" id="unassigned-chips"></div>
@@ -886,6 +887,8 @@ function renderFloor() {
   chipsBox.innerHTML = state.unassigned_guests.map(chipHtml).join('') ||
     '<div class="empty-note">没有未安排的宾客 🎉</div>';
   document.getElementById('unassigned-count').textContent = `（${state.stats.unseated} 人）`;
+  document.getElementById('floor-summary').textContent =
+    `共 ${state.guests.length} 组宾客 · ${state.stats.expected} 人预计出席 · ${state.tables.length} 桌`;
 
   bindFloorInteractions(venue, scale);
 }
