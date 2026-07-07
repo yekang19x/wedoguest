@@ -1,4 +1,5 @@
-# 一键启动婚礼宾客统计系统
+﻿# 一键启动婚礼宾客统计系统
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 

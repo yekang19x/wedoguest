@@ -1,4 +1,5 @@
-# 停止婚礼宾客统计系统
+﻿# 停止婚礼宾客统计系统
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Port = if ($args[0]) { $args[0] } else { 8321 }
 
 $Proc = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
