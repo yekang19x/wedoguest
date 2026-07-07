@@ -30,8 +30,10 @@ DEFAULT_CONFIG = {
     "venue_depth": 25.0,      # 会场长度（米，纵向）
     "table_diameter": 1.8,    # 桌子直径（米）
     "table_gap": 1.2,         # 自动排列时相邻桌子的边缘间距（米）
+    "wedding_date": "10.25",  # 婚礼日期（显示在标题）
 }
 CONFIG_INT_KEYS = {"default_capacity", "budget_total"}
+CONFIG_STR_KEYS = {"wedding_date"}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS guests (
@@ -157,7 +159,12 @@ def load_config_raw() -> dict:
     for r in rows:
         key, val = r["key"], r["value"]
         if key in DEFAULT_CONFIG:
-            out[key] = int(float(val)) if key in CONFIG_INT_KEYS else float(val)
+            if key in CONFIG_STR_KEYS:
+                out[key] = str(val)
+            elif key in CONFIG_INT_KEYS:
+                out[key] = int(float(val))
+            else:
+                out[key] = float(val)
     return out
 
 

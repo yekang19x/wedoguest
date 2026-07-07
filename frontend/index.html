@@ -6,198 +6,398 @@
 <title>婚礼宾客统计系统</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💒</text></svg>">
 <style>
-  /* 韩式婚礼配色：象牙白底、灰粉（dusty rose）主色、香槟金点缀、低饱和语义色 */
   :root {
-    --bg: #faf7f5;
-    --card: #ffffff;
-    --ink: #4d4442;
-    --muted: #a3948e;
-    --primary: #c08497;
-    --primary-dark: #a2687b;
-    --gold: #c9b083;
-    --line: #efe4de;
-    --ok: #7fa98d;
-    --warn: #c9975c;
-    --danger: #c26d5e;
-    --shadow: 0 2px 10px rgba(90, 70, 66, .07);
+    --bg: #ffffff;
+    --card: #fffbf9;
+    --card-elevated: #ffffff;
+    --ink: #3d3532;
+    --ink-soft: #5a504c;
+    --muted: #a89e98;
+    --primary: #c9918a;
+    --primary-dark: #b07069;
+    --primary-light: #f0d1cd;
+    --gold: #d4b896;
+    --gold-light: #efe0cc;
+    --line: #f2e8e4;
+    --line-light: #f9f3f0;
+    --ok: #6d9a7e;
+    --ok-bg: #eaf3ed;
+    --warn: #c09555;
+    --warn-bg: #faf1e4;
+    --danger: #c0675a;
+    --danger-bg: #fae8e5;
+    --shadow-sm: 0 1px 3px rgba(61,53,50,.04), 0 1px 2px rgba(61,53,50,.05);
+    --shadow: 0 4px 16px rgba(61,53,50,.06), 0 1px 3px rgba(61,53,50,.03);
+    --shadow-lg: 0 12px 40px rgba(61,53,50,.1), 0 4px 12px rgba(61,53,50,.03);
+    --font-display: Georgia, 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'SimSun', serif;
+    --font-body: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
   * { box-sizing: border-box; }
+
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    font-size: 14px;
+    font-family: var(--font-body);
+    font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* subtle grain texture on body */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    opacity: 0.18;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+
+  ::selection { background: #f0c6c9; color: var(--ink); }
+
   header {
-    background: linear-gradient(135deg, #a2687b, #c795a4 60%, #d8b0ba);
-    color: #fff; padding: 14px 24px;
-    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-    box-shadow: var(--shadow);
+    background: linear-gradient(135deg, #e8b4b8 0%, #f0c6c9 50%, #f2d0d2 100%);
+    color: var(--ink); padding: 0 32px;
+    display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
+    height: 60px;
+    border-bottom: 1px solid rgba(201,145,138,.15);
+    box-shadow: 0 2px 12px rgba(201,145,138,.1);
   }
-  header h1 { margin: 0; font-size: 19px; letter-spacing: 1px; }
-  nav { display: flex; gap: 6px; }
+  header h1 {
+    margin: 0; font-size: 20px; letter-spacing: 2px;
+    font-family: var(--font-display); font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(160,80,72,.15);
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1::after {
+    content: ''; display: inline-block; width: 1px; height: 22px;
+    background: rgba(255,255,255,.35); margin-left: 8px;
+  }
+  nav { display: flex; gap: 4px; }
   nav button {
-    background: rgba(255,255,255,.12); color: #fff; border: none;
-    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    background: transparent; color: rgba(255,255,255,.7); border: none;
+    padding: 8px 18px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-family: var(--font-body); font-weight: 500;
+    transition: all var(--transition); letter-spacing: 0.3px;
+    position: relative;
   }
-  nav button.active { background: #fff; color: var(--primary-dark); font-weight: 600; }
+  nav button:hover { color: #fff; background: rgba(255,255,255,.2); }
+  nav button.active {
+    color: var(--ink); background: rgba(255,255,255,.65); font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  nav button.active::after {
+    content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 20px; height: 2px; background: var(--primary-dark); border-radius: 1px;
+  }
 
   #stats-bar {
-    display: flex; gap: 10px; padding: 14px 24px 0; flex-wrap: wrap;
+    display: none; gap: 12px; padding: 20px 32px 0; flex-wrap: wrap;
   }
+  #stats-bar.visible { display: flex; }
   .stat {
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 8px 14px; min-width: 96px; box-shadow: var(--shadow);
+    background: var(--card-elevated); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 20px; min-width: 110px;
+    box-shadow: var(--shadow-sm); transition: all var(--transition);
+    position: relative; overflow: hidden;
   }
-  .stat .num { font-size: 20px; font-weight: 700; color: var(--primary-dark); }
-  .stat .lbl { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .stat::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: linear-gradient(90deg, #e8b4b8, var(--gold-light));
+    opacity: 0; transition: opacity var(--transition);
+  }
+  .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .stat:hover::before { opacity: 1; }
+  .stat .num {
+    font-size: 26px; font-weight: 700; color: var(--primary-dark);
+    font-family: var(--font-display); line-height: 1.1;
+  }
+  .stat .lbl {
+    color: var(--muted); font-size: 11px; margin-top: 4px;
+    text-transform: uppercase; letter-spacing: 0.8px; font-weight: 500;
+  }
   .stat.over .num { color: var(--danger); }
+  .stat.over::before { background: linear-gradient(90deg, var(--danger), var(--danger-bg)); opacity: 1; }
 
-  main { padding: 16px 24px 60px; }
+  main { padding: 20px 32px 60px; }
   .tab-page { display: none; }
-  .tab-page.active { display: block; }
+  .tab-page.active { display: block; animation: fadeIn 0.3s ease; }
 
-  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
-  .toolbar .hint { color: var(--muted); font-size: 13px; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .toolbar .hint { color: var(--muted); font-size: 12px; letter-spacing: 0.2px; }
   .spacer { flex: 1; }
 
   button.btn {
-    background: var(--primary); color: #fff; border: none; border-radius: 8px;
-    padding: 8px 14px; cursor: pointer; font-size: 14px;
+    background: var(--primary); color: #fff; border: none;
+    border-radius: 8px; padding: 9px 18px; cursor: pointer;
+    font-size: 13px; font-family: var(--font-body); font-weight: 500;
+    transition: all var(--transition); letter-spacing: 0.3px;
   }
-  button.btn:hover { background: var(--primary-dark); }
+  button.btn:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+  button.btn:active { transform: translateY(0); }
   button.btn.ghost {
-    background: transparent; color: var(--primary); border: 1px solid var(--primary);
+    background: transparent; color: var(--ink-soft);
+    border: 1px solid var(--line);
   }
-  button.btn.sm { padding: 3px 9px; font-size: 12px; border-radius: 6px; }
-  button.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  button.btn.ghost:hover { border-color: var(--primary); color: var(--primary-dark); background: rgba(184,145,138,.04); }
+  button.btn.sm { padding: 4px 12px; font-size: 12px; border-radius: 6px; }
+  button.btn.danger {
+    background: transparent; color: var(--danger); border: 1px solid rgba(192,103,90,.25);
+  }
+  button.btn.danger:hover { border-color: var(--danger); background: var(--danger-bg); }
 
   input, select, textarea {
-    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
-    font-size: 14px; font-family: inherit; background: #fff; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+    font-size: 14px; font-family: var(--font-body); background: var(--card-elevated);
+    color: var(--ink); transition: all var(--transition);
   }
-  input:focus, select:focus, textarea:focus { outline: 2px solid rgba(163,59,77,.25); }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(184,145,138,.12);
+  }
 
   /* ---- 会场平面图 ---- */
-  .floor-layout { display: flex; gap: 14px; align-items: flex-start; }
-  #venue-box { flex: 1; min-width: 0; }
+  .floor-layout { display: flex; gap: 0; align-items: flex-start; }
+  #venue-box { flex: 618; min-width: 0; padding-right: 20px; border-right: 1px solid var(--line); margin-right: 20px; }
   #venue {
-    position: relative; background: #fffdfb; margin: 0 auto;
-    border: 2px solid #ddc9c2; border-radius: 6px;
+    position: relative; background: #fffcf8; margin: 0 auto;
+    border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow); overflow: hidden;
-    background-image: linear-gradient(#f4ebe6 1px, transparent 1px),
-                      linear-gradient(90deg, #f4ebe6 1px, transparent 1px);
+    background-image:
+      linear-gradient(var(--line-light) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-light) 1px, transparent 1px);
   }
-  .venue-scale-note { color: var(--muted); font-size: 12px; margin-top: 6px; text-align: center; }
   .stage {
-    position: absolute; background: linear-gradient(180deg, #e9dcc3, #ddcba4);
-    border: 1px solid #c8b48a; border-top: none;
-    border-radius: 0 0 50% 50% / 0 0 100% 100%;  /* 半圆凸向场内 */
+    position: absolute;
+    background: linear-gradient(180deg, #e8dcc6, #dbc9a2);
+    border: 1px solid #cbb88c; border-top: none;
+    border-radius: 0 0 50% 50% / 0 0 100% 100%;
     display: flex; align-items: center; justify-content: center;
-    color: #86754e; font-weight: 700; letter-spacing: 4px; z-index: 1;
+    color: #8a7850; font-weight: 700; letter-spacing: 6px; z-index: 1;
     padding-bottom: 8px;
+    font-family: var(--font-display); font-size: 14px;
+    box-shadow: 0 4px 12px rgba(196,168,107,.12);
   }
   .aisle {
     position: absolute; z-index: 1;
-    background: linear-gradient(180deg, rgba(201, 176, 131, .16), rgba(201, 176, 131, .05));
-    border-left: 1px dashed #d9c6a6; border-right: 1px dashed #d9c6a6;
+    background: linear-gradient(180deg, rgba(196,168,107,.1), rgba(196,168,107,.03));
+    border-left: 1px dashed rgba(196,168,107,.3);
+    border-right: 1px dashed rgba(196,168,107,.3);
     display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px;
   }
   .aisle span {
-    writing-mode: vertical-lr; color: #b3a077; font-weight: 600;
-    letter-spacing: 8px; font-size: 12px; opacity: .75;
+    writing-mode: vertical-lr; color: rgba(196,168,107,.5); font-weight: 600;
+    letter-spacing: 8px; font-size: 12px;
   }
   .table-dot {
     position: absolute; border-radius: 50%; z-index: 2;
-    background: radial-gradient(circle at 35% 30%, #ffffff, #f6ede9);
-    border: 2px solid var(--primary); box-shadow: 0 2px 6px rgba(90,70,66,.16);
+    background: radial-gradient(circle at 38% 28%, #ffffff 0%, #faf4ee 70%, #f0e6dc 100%);
+    border: 2px solid var(--primary); box-shadow: var(--shadow-sm);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     cursor: grab; user-select: none; touch-action: none; text-align: center; line-height: 1.15;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
   }
-  .table-dot.dragging { opacity: .75; cursor: grabbing; z-index: 5; box-shadow: 0 6px 16px rgba(90,70,66,.3); }
-  .table-dot.dragover { border-color: var(--gold); border-style: dashed; background: #fdf8ef; }
-  .table-dot.empty { border-style: dashed; border-color: #d3bfb0; }
+  .table-dot:hover { box-shadow: var(--shadow); }
+  .table-dot.dragging { opacity: .8; cursor: grabbing; z-index: 5; box-shadow: var(--shadow-lg); }
+  .table-dot.dragover { border-color: var(--gold); border-style: dashed; background: radial-gradient(circle, #fdf8ef, #faf3e5); }
+  .table-dot.empty { border-style: dashed; border-color: var(--line); }
   .table-dot.overfull { border-color: var(--danger); }
-  .table-dot .tno { font-weight: 700; color: var(--primary-dark); }
+  .table-dot .tno {
+    font-weight: 700; color: var(--primary-dark);
+    font-family: var(--font-display);
+  }
   .table-dot.overfull .tocc { color: var(--danger); font-weight: 700; }
-  .table-dot .tocc { color: var(--muted); }
+  .table-dot .tocc { color: var(--muted); font-size: 0.85em; }
   .table-dot .tlbl {
-    font-size: .78em; color: var(--muted); max-width: 88%;
+    font-size: .72em; color: var(--muted); max-width: 88%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #side-panel {
-    width: 240px; flex-shrink: 0; background: var(--card);
-    border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow);
+    flex: 382; min-width: 0;
+    display: flex; flex-direction: column; gap: 14px;
+    max-height: calc(100vh - 160px); min-height: 0;
   }
-  #side-panel h4 { margin: 0 0 8px; font-size: 14px; }
-  #side-panel .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .side-section {
+    background: var(--card-elevated); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow);
+    overflow-y: auto; min-height: 0;
+  }
+  .side-section.distribution { flex: 1; }
+  .side-section.unassigned { flex-shrink: 0; max-height: 40%; }
+  .side-section h4 {
+    margin: 0 0 6px; font-size: 14px;
+    font-family: var(--font-display); font-weight: 600;
+  }
+  .side-section .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  #distribution-list {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .dist-table {
+    background: var(--card); border: 1px solid var(--line-light);
+    border-radius: var(--radius); padding: 8px 10px;
+  }
+  .dist-header {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0 4px;
+    border-bottom: 1px solid var(--line-light); margin-bottom: 4px;
+  }
+  .dist-header .tno {
+    font-weight: 700; color: var(--primary-dark); font-family: var(--font-display);
+    font-size: 13px;
+  }
+  .dist-header .tlbl { color: var(--muted); font-size: 11px; }
+  .dist-header .occ {
+    margin-left: auto; font-size: 12px; color: var(--ink-soft); font-weight: 500;
+  }
+  .dist-header .occ.over { color: var(--danger); font-weight: 700; }
+  .dist-header .occ.full { color: var(--ok); }
+  .dist-guests {
+    display: flex; flex-wrap: wrap; gap: 3px 8px; padding: 2px 0;
+  }
+  .dist-guest {
+    font-size: 12px; color: var(--ink-soft); line-height: 1.6;
+  }
+  .dist-guest .name { color: var(--ink); font-weight: 500; }
+  .dist-guest .sz { color: var(--muted); }
+  .dist-guest.declined { opacity: .45; text-decoration: line-through; }
+  .dist-empty { font-size: 11px; color: var(--muted); padding: 2px 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
   .chip {
-    background: #f8f1ed; border: 1px solid var(--line); border-radius: 16px;
-    padding: 3px 10px; font-size: 13px; cursor: grab; user-select: none;
-    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    padding: 4px 12px; font-size: 13px; cursor: grab; user-select: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all var(--transition);
   }
-  .chip:hover { border-color: var(--primary); }
+  .chip:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
   .chip .n { color: var(--primary-dark); font-weight: 600; }
-  .chip.declined { opacity: .45; text-decoration: line-through; }
+  .chip.declined { opacity: .4; text-decoration: line-through; }
   .chip.pending-status { border-style: dashed; }
-  .chip .sz { background: var(--gold); color: #fff; border-radius: 10px; padding: 0 6px; font-size: 11px; }
-  .empty-note { color: var(--muted); font-size: 12px; padding: 6px 0; }
-  /* 桌详情弹窗 */
-  .detail-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .chip .sz {
+    background: var(--gold); color: #fff; border-radius: 10px;
+    padding: 0 7px; font-size: 10px; font-weight: 600;
+  }
+  .empty-note { color: var(--muted); font-size: 12px; padding: 8px 0; }
+
+  .detail-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid var(--line-light);
+  }
   .detail-row:last-child { border-bottom: none; }
   .detail-row .name { font-weight: 600; min-width: 72px; }
   .detail-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
 
   /* ---- 表格 ---- */
-  table.list { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
-  table.list th, table.list td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); }
-  table.list th { background: #f6ede9; font-weight: 600; font-size: 13px; }
+  table.list {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    background: var(--card-elevated); border-radius: var(--radius-lg);
+    overflow: hidden; box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+  table.list th, table.list td {
+    padding: 11px 14px; text-align: left;
+    border-bottom: 1px solid var(--line-light);
+  }
+  table.list th {
+    background: linear-gradient(180deg, var(--card), var(--line-light));
+    font-weight: 600; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    position: sticky; top: 0; z-index: 1;
+  }
   table.list tr:last-child td { border-bottom: none; }
+  table.list tbody tr { transition: background var(--transition); }
+  table.list tbody tr:hover { background: rgba(184,145,138,.03); }
   table.list td .ops { display: flex; gap: 6px; }
-  table.list select.inline { padding: 3px 6px; font-size: 13px; border-radius: 6px; }
-  .tag { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; }
-  .tag.ok { background: #e9f1ec; color: var(--ok); }
-  .tag.pending { background: #f9efe1; color: var(--warn); }
-  .tag.bad { background: #f8e9e5; color: var(--danger); }
-  .tag.plain { background: #f0e8e3; color: var(--muted); }
+  table.list select.inline {
+    padding: 4px 8px; font-size: 12px; border-radius: 6px;
+    background: var(--card); border: 1px solid var(--line);
+  }
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.pending { background: var(--warn-bg); color: var(--warn); }
+  .tag.bad { background: var(--danger-bg); color: var(--danger); }
+  .tag.plain { background: var(--line-light); color: var(--muted); }
 
   /* ---- 批量操作 ---- */
   .batch-bar {
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    background: #f8f1ec; border-radius: 10px; padding: 8px 14px; margin-bottom: 10px;
+    background: linear-gradient(135deg, rgba(184,145,138,.06), rgba(196,168,107,.06));
+    border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px;
   }
-  .batch-bar .count { font-weight: 600; font-size: 13px; white-space: nowrap; }
-  table.list input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+  .batch-bar .count { font-weight: 600; font-size: 13px; white-space: nowrap; color: var(--primary-dark); }
+  table.list input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;
+  }
 
   /* ---- 设置 ---- */
-  .settings-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; max-width: 460px; box-shadow: var(--shadow); }
-  .form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-  .form-row label { font-size: 13px; color: var(--muted); }
-  .form-row .desc { font-size: 12px; color: var(--muted); }
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .settings-card {
+    background: var(--card-elevated); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); padding: 28px; max-width: 500px;
+    box-shadow: var(--shadow);
+  }
+  .settings-card h3 {
+    font-family: var(--font-display); font-weight: 600;
+    font-size: 20px; letter-spacing: 0.5px;
+  }
+  .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .form-row label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.3px; }
+  .form-row .desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
   .form-grid .full { grid-column: 1 / -1; }
 
   /* ---- 弹窗 ---- */
   #modal-backdrop {
-    position: fixed; inset: 0; background: rgba(40,30,25,.45);
+    position: fixed; inset: 0;
+    background: rgba(44,40,37,.4);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     display: none; align-items: center; justify-content: center; z-index: 50;
   }
   #modal-backdrop.show { display: flex; }
   #modal {
-    background: var(--card); border-radius: 14px; padding: 20px 22px;
-    width: min(520px, 92vw); max-height: 86vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    background: var(--card-elevated); border-radius: var(--radius-lg);
+    padding: 28px 30px; width: min(540px, 92vw); max-height: 86vh;
+    overflow: auto; box-shadow: var(--shadow-lg);
+    border: 1px solid var(--line);
+    animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  #modal h3 { margin: 0 0 16px; font-size: 17px; }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-  .checkbox-row { display: flex; align-items: flex-start; gap: 8px; background: #f8f1ec; border-radius: 8px; padding: 10px; }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  #modal h3 {
+    margin: 0 0 20px; font-size: 20px;
+    font-family: var(--font-display); font-weight: 600;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+  .checkbox-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: var(--line-light); border-radius: var(--radius);
+    padding: 12px; border: 1px solid var(--line);
+  }
   .checkbox-row input { margin-top: 2px; }
   .checkbox-row .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
   /* ---- Toast ---- */
   #toast {
-    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
-    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px;
-    font-size: 14px; display: none; z-index: 99; max-width: 80vw;
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: #4a3d3a; color: #fff; padding: 12px 22px; border-radius: var(--radius);
+    font-size: 13px; font-weight: 500; display: none; z-index: 99; max-width: 80vw;
+    box-shadow: var(--shadow-lg); letter-spacing: 0.2px;
+    animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
   #toast.show { display: block; }
   #toast.error { background: var(--danger); }
@@ -206,23 +406,29 @@
   #swap-mode-btn.active-mode { background: var(--gold); color: #fff; border-color: var(--gold); }
   .table-dot.swap-source {
     border-color: var(--gold) !important; border-width: 3px;
-    animation: swap-pulse 1.2s ease-in-out infinite;
+    animation: swap-pulse 1.5s ease-in-out infinite;
   }
   @keyframes swap-pulse {
-    0%, 100% { box-shadow: 0 0 8px rgba(201, 176, 131, .4); }
-    50% { box-shadow: 0 0 16px rgba(201, 176, 131, .7); }
+    0%, 100% { box-shadow: 0 0 6px rgba(196,168,107,.3); }
+    50% { box-shadow: 0 0 20px rgba(196,168,107,.5); }
   }
 
   /* ---- 排序表头 ---- */
-  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable { cursor: pointer; user-select: none; transition: color var(--transition); }
   th.sortable:hover { color: var(--primary-dark); }
-  .sort-arrow { font-size: 11px; opacity: .6; }
+  .sort-arrow { font-size: 10px; opacity: .5; }
+
+  /* ---- 自定义滚动条 ---- */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>💒 婚礼宾客统计系统</h1>
+  <h1 id="site-title">💒 Our Wedding</h1>
   <nav>
     <button data-tab="floor" class="active">🪑 桌位图</button>
     <button data-tab="guests">📋 宾客名单</button>
@@ -236,27 +442,30 @@
 <main>
   <div class="tab-page active" id="tab-floor">
     <div class="toolbar">
+      <button class="btn" onclick="openGuestModal()">＋ 新增宾客</button>
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
       <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
-      <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 交换宾客</button>
-      <span class="hint" id="venue-info"></span>
+      <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 调换座位</button>
       <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
-        <input type="range" id="zoom-range" min="50" max="250" value="100" step="10"
+        <input type="range" id="zoom-range" min="50" max="150" value="100" step="10"
                style="width:110px;padding:0" oninput="setZoom(this.value)">
         <span id="zoom-val">100%</span>
       </label>
-      <div class="spacer"></div>
-      <span class="hint">💡 拖动圆桌调整摆位；点击圆桌看单桌详情；把右侧宾客名牌拖到桌上即可入座。</span>
     </div>
     <div class="floor-layout">
       <div id="venue-box">
         <div id="venue"></div>
-        <div class="venue-scale-note" id="venue-note"></div>
       </div>
       <div id="side-panel">
-        <h4>⏳ 未安排宾客 <span id="unassigned-count"></span></h4>
-        <div class="sub">拖动名牌到平面图的桌子上入座</div>
-        <div class="chips" id="unassigned-chips"></div>
+        <div class="side-section distribution">
+          <h4>📊 宾客分布明细</h4>
+          <div id="distribution-list"></div>
+        </div>
+        <div class="side-section unassigned">
+          <h4>⏳ 未安排宾客 <span id="unassigned-count"></span></h4>
+          <div class="sub">拖动名牌到平面图的桌子上入座</div>
+          <div class="chips" id="unassigned-chips"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -318,7 +527,12 @@
 
   <div class="tab-page" id="tab-settings">
     <div class="settings-card">
-      <h3 style="margin-top:0">全局设置</h3>
+      <h3 style="margin-top:0">婚礼信息</h3>
+      <div class="form-row">
+        <label>婚礼日期（显示在页面标题，如 10.25 或 2026.10.25）</label>
+        <input type="text" id="cfg-wedding-date" maxlength="20" placeholder="10.25">
+      </div>
+      <h3>宾客设置</h3>
       <div class="form-row">
         <label>默认单桌容纳人数（未单独配置容量的桌子生效）</label>
         <input type="number" id="cfg-capacity" min="1">
@@ -420,7 +634,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-page').forEach(p =>
       p.classList.toggle('active', p.id === 'tab-' + currentTab));
-    // 平面图依赖容器实际宽度计算比例，页签隐藏期间宽度为 0，切回时需重绘
+    document.getElementById('stats-bar').classList.toggle('visible', currentTab === 'guests');
     if (currentTab === 'floor' && state) renderFloor();
   };
 });
@@ -428,6 +642,7 @@ document.querySelectorAll('nav button').forEach(btn => {
 /* ================= 渲染 ================= */
 
 function renderAll() {
+  renderTitle();
   renderStats();
   renderFloor();
   renderGuestsTable();
@@ -573,10 +788,7 @@ function renderFloor() {
   venue.style.height = px(cfg.venue_depth) + 'px';
   venue.style.backgroundSize = `${px(1)}px ${px(1)}px`;  // 1米网格
 
-  document.getElementById('venue-info').textContent =
-    `会场 ${cfg.venue_width} × ${cfg.venue_depth} 米 · 桌径 ${cfg.table_diameter} 米 · 间距 ${cfg.table_gap} 米（可在「设置」调整）`;
-  document.getElementById('venue-note').textContent =
-    `比例约 1 米 = ${Math.round(scale)} 像素，背景网格为 1 米；圆桌按直径 ${cfg.table_diameter} 米等比绘制`;
+
 
   const stage = stageRect(cfg), aisle = aisleRect(cfg);
   const autoPos = autoLayout(state.tables, cfg);
@@ -608,6 +820,30 @@ function renderFloor() {
     <div class="aisle" style="left:${px(aisle.x)}px; top:${px(aisle.y)}px;
          width:${px(aisle.w)}px; height:${px(aisle.h)}px"><span>通 道</span></div>
     ${dots}`;
+
+  // 宾客分布明细
+  const distList = document.getElementById('distribution-list');
+  const sortedTables = [...state.tables].sort((a, b) =>
+    tableNoOrder(a.table_no) - tableNoOrder(b.table_no) || a.table_no.localeCompare(b.table_no, 'zh'));
+  distList.innerHTML = sortedTables.map(t => {
+    const over = t.occupied > t.effective_capacity;
+    const full = !over && t.occupied === t.effective_capacity;
+    const occCls = over ? ' over' : full ? ' full' : '';
+    const guestsHtml = t.guests.length
+      ? t.guests.map(g => {
+          const cls = g.confirm_status === '不参加' ? ' declined' : '';
+          return `<span class="dist-guest${cls}"><span class="name">${esc(g.name)}</span><span class="sz"> ${seatSize(g)}人</span></span>`;
+        }).join('')
+      : '<span class="dist-empty">空桌</span>';
+    return `<div class="dist-table">
+      <div class="dist-header">
+        <span class="tno">${esc(t.table_no)}</span>
+        ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
+        <span class="occ${occCls}">${t.occupied}/${t.effective_capacity}</span>
+      </div>
+      <div class="dist-guests">${guestsHtml}</div>
+    </div>`;
+  }).join('') || '<div class="empty-note">暂无桌子</div>';
 
   const chipsBox = document.getElementById('unassigned-chips');
   chipsBox.innerHTML = state.unassigned_guests.map(chipHtml).join('') ||
@@ -704,7 +940,7 @@ function openTableDetail(tableNo) {
     <div>${rows}</div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑桌子</button>
-      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">交换宾客</button>
+      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">调换座位</button>
       <button class="btn" onclick="closeModal()">关闭</button>
     </div>`);
 }
@@ -825,7 +1061,7 @@ function renderTablesTable() {
             : `${t.occupied}/${t.effective_capacity}`}</td>
       <td><div class="ops">
         <button class="btn sm ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑</button>
-        <button class="btn sm ghost" onclick="openSwapModal('${esc(t.table_no)}')">交换</button>
+        <button class="btn sm ghost" onclick="openSwapModal('${esc(t.table_no)}')">调换</button>
         <button class="btn sm danger" onclick="removeTable('${esc(t.table_no)}')">删除</button>
       </div></td>
     </tr>`).join('');
@@ -834,12 +1070,19 @@ function renderTablesTable() {
 }
 
 function renderSettings() {
+  document.getElementById('cfg-wedding-date').value = state.config.wedding_date || '10.25';
   document.getElementById('cfg-capacity').value = state.config.default_capacity;
   document.getElementById('cfg-budget').value = state.config.budget_total;
   document.getElementById('cfg-venue-width').value = state.config.venue_width;
   document.getElementById('cfg-venue-depth').value = state.config.venue_depth;
   document.getElementById('cfg-table-diameter').value = state.config.table_diameter;
   document.getElementById('cfg-table-gap').value = state.config.table_gap;
+}
+
+function renderTitle() {
+  const d = state.config.wedding_date || '10.25';
+  document.getElementById('site-title').textContent = '💒 Our Wedding · ' + d;
+  document.title = 'Our Wedding · ' + d;
 }
 
 /* ================= 弹窗 ================= */
@@ -1138,7 +1381,7 @@ function toggleSwapMode() {
   const btn = document.getElementById('swap-mode-btn');
   btn.classList.toggle('active-mode', swapMode);
   document.querySelectorAll('.table-dot.swap-source').forEach(d => d.classList.remove('swap-source'));
-  if (swapMode) toast('交换模式：点击第一张桌选中，再点击第二张桌完成交换。再次点击按钮退出。');
+  if (swapMode) toast('调换模式：点击第一张桌选中，再点击第二张桌完成调换。再次点击按钮退出。');
 }
 
 function handleSwapClick(tableNo) {
@@ -1157,19 +1400,19 @@ function openSwapModal(tableNo) {
   const t = tableByNo(tableNo);
   if (!t) return;
   const others = state.tables.filter(x => x.table_no !== tableNo);
-  if (!others.length) { toast('没有其他桌子可交换', true); return; }
+  if (!others.length) { toast('没有其他桌子可调换', true); return; }
   const opts = others.map(x => {
     const lbl = `${x.table_no}${x.label ? '｜' + x.label : ''}（${x.occupied}/${x.effective_capacity}）`;
     return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
   }).join('');
   showModal(`
-    <h3>交换宾客：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
-    <div class="sub" style="margin-bottom:12px">桌号与位置不变，交换两桌的备注名、容量和全部宾客。</div>
-    <div class="form-row"><label>与哪张桌交换</label>
+    <h3>调换座位：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
+    <div class="sub" style="margin-bottom:12px">桌号与位置不变，调换两桌的备注名、容量和全部宾客。</div>
+    <div class="form-row"><label>与哪张桌调换</label>
       <select id="swap-target">${opts}</select></div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">取消</button>
-      <button class="btn" onclick="doSwapTables('${esc(tableNo)}', document.getElementById('swap-target').value)">确定交换</button>
+      <button class="btn" onclick="doSwapTables('${esc(tableNo)}', document.getElementById('swap-target').value)">确定调换</button>
     </div>`);
 }
 
@@ -1180,7 +1423,7 @@ async function doSwapTables(tableA, tableB) {
     swapSource = null;
     if (swapMode) toggleSwapMode();
     await reload();
-    toast(`${tableA} 桌 ⇄ ${tableB} 桌 已交换`);
+    toast(`${tableA} 桌 ⇄ ${tableB} 桌 已调换`);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1309,6 +1552,7 @@ async function removeTable(tableNo) {
 /* ---- 设置 ---- */
 async function saveConfig() {
   const body = {
+    wedding_date: document.getElementById('cfg-wedding-date').value.trim() || '10.25',
     default_capacity: parseInt(document.getElementById('cfg-capacity').value, 10),
     budget_total: parseInt(document.getElementById('cfg-budget').value, 10),
     venue_width: parseFloat(document.getElementById('cfg-venue-width').value),
