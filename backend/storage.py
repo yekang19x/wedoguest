@@ -211,7 +211,12 @@ def _migrate_legacy():
                 key = (row.get("配置项") or "").strip()
                 val = (row.get("值") or "").strip()
                 if key in config and val:
-                    config[key] = int(float(val)) if key in CONFIG_INT_KEYS else float(val)
+                    if key in CONFIG_STR_KEYS:
+                        config[key] = val
+                    elif key in CONFIG_INT_KEYS:
+                        config[key] = int(float(val))
+                    else:
+                        config[key] = float(val)
     if LEGACY_GUESTS_XLSX.exists():
         ws = load_workbook(LEGACY_GUESTS_XLSX).active
         rows = ws.iter_rows(values_only=True)

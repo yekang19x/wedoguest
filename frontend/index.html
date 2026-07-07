@@ -684,6 +684,7 @@ function renderStats() {
     {lbl: '已安排桌位', num: s.seated},
     {lbl: '未安排', num: s.unseated},
     {lbl: '邀请函已发', num: `${s.invite_sent}/${s.guest_count}`},
+    {lbl: '微信已发', num: `${s.wechat_sent}/${s.guest_count}`},
   ];
   document.getElementById('stats-bar').innerHTML = items.map(i => `
     <div class="stat${i.over ? ' over' : ''}">
@@ -1064,7 +1065,7 @@ function renderGuestsTable() {
         </div></td>
       </tr>`).join('');
   document.querySelector('#guests-table tbody').innerHTML =
-    rows || '<tr><td colspan="11" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
+    rows || `<tr><td colspan="${document.querySelectorAll('#guests-table thead th').length}" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>`;
 }
 
 function renderTablesTable() {

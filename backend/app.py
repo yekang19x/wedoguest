@@ -148,6 +148,7 @@ def _build_stats(guests: list[dict], config: dict) -> dict:
         "guest_count": len(guests),
         "invite_sent": sum(1 for g in guests if g["invite_status"] == "已发送"),
         "invite_unsent": sum(1 for g in guests if g["invite_status"] == "未发送"),
+        "wechat_sent": sum(1 for g in guests if g.get("wechat_sent") == "已发送"),
     }
 
 
@@ -290,6 +291,7 @@ def move_guest(gid: int, body: MoveIn):
             "family_names": guest["family_names"],
             "table_no": guest["table_no"],
             "invite_status": guest["invite_status"],
+            "wechat_sent": guest.get("wechat_sent", "未发送"),
             "confirm_status": guest["confirm_status"],
             "note": f"由「{guest['name']}」换桌拆分",
         }
@@ -369,7 +371,7 @@ def _export_family(g) -> str:
 def export_guests():
     guests = storage.load_guests()
     headers = ["姓名", "家属", "预计人数", "确认人数", "桌号",
-               "邀请状态", "确认状态", "备注"]
+               "邀请状态", "微信通知", "确认状态", "备注"]
 
     wb = Workbook()
     ws = wb.active
@@ -377,7 +379,8 @@ def export_guests():
     ws.append(headers)
     for g in guests:
         ws.append([g["name"], _export_family(g), g["party_size"], g["confirmed_size"],
-                   g["table_no"], g["invite_status"], g["confirm_status"], g["note"]])
+                   g["table_no"], g["invite_status"], g.get("wechat_sent", "未发送"),
+                   g["confirm_status"], g["note"]])
 
     # 表头样式
     hdr_font = Font(bold=True, color="FFFFFF", size=11)
@@ -474,6 +477,9 @@ async def import_guests(request: Request, mode: str = "append"):
         confirm_raw = _norm_cell(cell(row, "确认状态"))
         confirm_status = confirm_raw if confirm_raw in CONFIRM_STATUSES else "待确认"
 
+        wechat_raw = _norm_cell(cell(row, "微信通知"))
+        wechat_sent = wechat_raw if wechat_raw in WECHAT_STATUSES else "未发送"
+
         note = _norm_cell(cell(row, "备注"))
 
         guests.append({
@@ -484,6 +490,7 @@ async def import_guests(request: Request, mode: str = "append"):
             "family_names": family_names,
             "table_no": table_no,
             "invite_status": invite_status,
+            "wechat_sent": wechat_sent,
             "confirm_status": confirm_status,
             "note": note,
         })
