@@ -53,6 +53,13 @@ class TableIn(BaseModel):
     y: float | None = Field(default=None, ge=0)
 
 
+class BatchUpdateIn(BaseModel):
+    ids: list[int] = Field(min_length=1)
+    table_no: str | None = None
+    invite_status: str | None = None
+    confirm_status: str | None = None
+
+
 class ConfigIn(BaseModel):
     default_capacity: int = Field(ge=1)
     budget_total: int = Field(ge=0)
@@ -216,6 +223,29 @@ def delete_guest(gid: int):
     guests.remove(guest)
     storage.save_guests(guests)
     return {"ok": True}
+
+
+@app.patch("/api/guests/batch")
+def batch_update_guests(body: BatchUpdateIn):
+    if body.invite_status is not None and body.invite_status not in INVITE_STATUSES:
+        raise HTTPException(400, f"invite_status 必须是 {'、'.join(INVITE_STATUSES)} 之一")
+    if body.confirm_status is not None and body.confirm_status not in CONFIRM_STATUSES:
+        raise HTTPException(400, f"confirm_status 必须是 {'、'.join(CONFIRM_STATUSES)} 之一")
+    guests = storage.load_guests()
+    id_set = set(body.ids)
+    updated = 0
+    for g in guests:
+        if g["id"] not in id_set:
+            continue
+        if body.table_no is not None:
+            g["table_no"] = body.table_no
+        if body.invite_status is not None:
+            g["invite_status"] = body.invite_status
+        if body.confirm_status is not None:
+            g["confirm_status"] = body.confirm_status
+        updated += 1
+    storage.save_guests(guests)
+    return {"updated": updated}
 
 
 @app.post("/api/guests/{gid}/move")

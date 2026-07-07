@@ -161,6 +161,14 @@
   .tag.bad { background: #f8e9e5; color: var(--danger); }
   .tag.plain { background: #f0e8e3; color: var(--muted); }
 
+  /* ---- 批量操作 ---- */
+  .batch-bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: #f8f1ec; border-radius: 10px; padding: 8px 14px; margin-bottom: 10px;
+  }
+  .batch-bar .count { font-weight: 600; font-size: 13px; white-space: nowrap; }
+  table.list input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
   /* ---- 设置 ---- */
   .settings-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; max-width: 460px; box-shadow: var(--shadow); }
   .form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
@@ -246,8 +254,18 @@
       <div class="spacer"></div>
       <span class="hint">状态列可直接下拉修改</span>
     </div>
+    <div class="batch-bar" id="batch-bar" style="display:none">
+      <span class="count" id="batch-count"></span>
+      <button class="btn sm ghost" onclick="batchSetTable()">批量换桌</button>
+      <button class="btn sm ghost" onclick="batchSetField('invite_status', ['未发送','已发送'], '邀请状态')">批量设置邀请状态</button>
+      <button class="btn sm ghost" onclick="batchSetField('confirm_status', ['待确认','已确认','不参加'], '确认状态')">批量设置确认状态</button>
+      <button class="btn sm danger" onclick="batchDelete()">批量删除</button>
+      <div class="spacer"></div>
+      <button class="btn sm ghost" onclick="clearSelection()">取消选择</button>
+    </div>
     <table class="list" id="guests-table">
       <thead><tr>
+        <th style="width:32px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"></th>
         <th>姓名</th><th>预计人数</th><th>确认人数</th><th>家属姓名</th><th>桌号</th>
         <th>邀请函</th><th>确认状态</th><th>备注</th><th style="width:190px">操作</th>
       </tr></thead>
@@ -449,8 +467,7 @@ function tableNoOrder(no) {
 }
 
 // 给没有坐标的桌子自动找空位（避开半圆舞台/中线通道/已摆放的桌）：
-// 场地以中线通道分为左右两边；主桌自动排在舞台右侧区域的左上角；
-// 其余按桌号排序，从左往右、从上往下分列两侧
+// 每行先排左区 L→R，再排右区 L→R（与左区镜像对称）；主桌 = 右区第一行最靠近过道的位置
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), aisle = aisleRect(cfg);
@@ -459,23 +476,43 @@ function autoLayout(tables, cfg) {
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
   const isMain = t => t.table_no === '主桌';
-  // 主桌最先分配（确保占到右侧区域左上角），其余按桌号升序
-  const pending = tables.filter(t => t.x == null || t.y == null).sort((a, b) =>
-    (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0) ||
+  const firstRowY = stage.h + rad + 0.6;
+  // 预生成对称槽位：左区 L→R → 右区 L→R（镜像），逐行重复
+  const slots = [];
+  let mainSlotIdx = -1;
+  for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
+    const leftXs = [];
+    for (let x = margin; x <= cfg.venue_width - margin; x += step) {
+      if (x < aisle.x && !circleHitsRect(stage, x, y, rad) && !circleHitsRect(aisle, x, y, rad))
+        leftXs.push(x);
+    }
+    for (const x of leftXs) slots.push({ x, y });
+    const rightXs = leftXs.map(x => cfg.venue_width - x)
+      .filter(x => x <= cfg.venue_width - margin
+        && !circleHitsRect(stage, x, y, rad) && !circleHitsRect(aisle, x, y, rad))
+      .sort((a, b) => a - b);
+    if (mainSlotIdx < 0 && rightXs.length) mainSlotIdx = slots.length;
+    for (const x of rightXs) slots.push({ x, y });
+  }
+  // 主桌固定放右区首位；其余按桌号升序填入剩余槽位
+  const pending = tables.filter(t => t.x == null || t.y == null);
+  const mainTable = pending.find(t => isMain(t));
+  if (mainTable && mainSlotIdx >= 0) {
+    const s = slots[mainSlotIdx];
+    if (!placed.some(([px, py]) => (px - s.x) ** 2 + (py - s.y) ** 2 < minDist ** 2)) {
+      pos[mainTable.table_no] = { x: s.x, y: s.y };
+      placed.push([s.x, s.y]);
+    }
+  }
+  const queue = pending.filter(t => !pos[t.table_no]).sort((a, b) =>
     tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
     a.table_no.localeCompare(b.table_no, 'zh'));
-  const firstRowY = stage.h + rad + 0.6;
-  for (const t of pending) {
+  for (const t of queue) {
     let found = null;
-    const rightOnly = isMain(t);
-    outer:
-    for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
-      for (let x = margin; x <= cfg.venue_width - margin; x += step) {
-        if (rightOnly && x < aisle.x + aisle.w + rad) continue;
-        if (circleHitsRect(stage, x, y, rad) || circleHitsRect(aisle, x, y, rad)) continue;
-        if (placed.some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < minDist ** 2)) continue;
-        found = { x, y }; break outer;
-      }
+    for (const slot of slots) {
+      if (placed.some(([px, py]) => (px - slot.x) ** 2 + (py - slot.y) ** 2 < minDist ** 2)) continue;
+      found = { x: slot.x, y: slot.y };
+      break;
     }
     found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
     pos[t.table_no] = found;
@@ -654,6 +691,38 @@ function inlineSelect(g, field, options) {
     '</select>';
 }
 
+const selectedIds = new Set();
+
+function toggleSelectAll(checked) {
+  const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
+  const visible = state.guests.filter(g => !kw || [g.name, g.family_names, g.note, g.table_no]
+    .some(v => String(v).toLowerCase().includes(kw)));
+  selectedIds.clear();
+  if (checked) visible.forEach(g => selectedIds.add(g.id));
+  renderGuestsTable();
+  updateBatchBar();
+}
+
+function toggleSelect(gid) {
+  if (selectedIds.has(gid)) selectedIds.delete(gid); else selectedIds.add(gid);
+  updateBatchBar();
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  const sa = document.getElementById('select-all');
+  if (sa) sa.checked = false;
+  renderGuestsTable();
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batch-bar');
+  const n = selectedIds.size;
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('batch-count').textContent = `已选 ${n} 组宾客`;
+}
+
 function renderGuestsTable() {
   const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
   const rows = state.guests
@@ -661,6 +730,7 @@ function renderGuestsTable() {
       .some(v => String(v).toLowerCase().includes(kw)))
     .map(g => `
       <tr>
+        <td><input type="checkbox" ${selectedIds.has(g.id) ? 'checked' : ''} onchange="toggleSelect(${g.id})"></td>
         <td><b>${esc(g.name)}</b></td>
         <td>${g.party_size}</td>
         <td>${g.confirm_status === '已确认'
@@ -678,7 +748,7 @@ function renderGuestsTable() {
         </div></td>
       </tr>`).join('');
   document.querySelector('#guests-table tbody').innerHTML =
-    rows || '<tr><td colspan="9" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
+    rows || '<tr><td colspan="10" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
 }
 
 function renderTablesTable() {
@@ -786,6 +856,53 @@ async function saveGuest(gid) {
     await reload();
     toast(gid ? '已保存' : '已新增宾客');
   } catch (e) { toast(e.message, true); }
+}
+
+/* ---- 批量操作 ---- */
+function batchSetTable() {
+  showModal(`
+    <h3>批量换桌（${selectedIds.size} 组宾客）</h3>
+    <div class="form-row"><label>目标桌号</label>
+      <select id="batch-table">${tableOptions('')}</select></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitBatch({table_no: document.getElementById('batch-table').value})">确定</button>
+    </div>`);
+}
+
+function batchSetField(field, options, label) {
+  const opts = options.map(o => `<option value="${o}">${o}</option>`).join('');
+  showModal(`
+    <h3>批量设置${esc(label)}（${selectedIds.size} 组宾客）</h3>
+    <div class="form-row"><label>${esc(label)}</label>
+      <select id="batch-val">${opts}</select></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitBatch({['${field}']: document.getElementById('batch-val').value})">确定</button>
+    </div>`);
+}
+
+async function submitBatch(fields) {
+  try {
+    const r = await api('PATCH', '/api/guests/batch', { ids: [...selectedIds], ...fields });
+    closeModal();
+    clearSelection();
+    await reload();
+    toast(`已更新 ${r.updated} 组宾客`);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function batchDelete() {
+  const count = selectedIds.size;
+  if (!confirm(`确定删除选中的 ${count} 组宾客？此操作不可撤销。`)) return;
+  try {
+    for (const gid of selectedIds) {
+      await api('DELETE', `/api/guests/${gid}`);
+    }
+    clearSelection();
+    await reload();
+    toast(`已删除 ${count} 组宾客`);
+  } catch (e) { toast(e.message, true); await reload(); }
 }
 
 async function quickUpdate(gid, field, value) {
