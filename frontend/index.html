@@ -152,6 +152,20 @@
   button.btn.danger {
     background: transparent; color: var(--danger); border: 1px solid rgba(192,103,90,.25);
   }
+  .btn.io {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--card-elevated); color: var(--ink-soft);
+    border: 1px solid var(--gold-light); border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; font-family: var(--font-body);
+    font-weight: 500; cursor: pointer; text-decoration: none;
+    transition: all var(--transition); letter-spacing: 0.3px;
+  }
+  .btn.io:hover {
+    border-color: var(--gold); color: var(--primary-dark);
+    background: linear-gradient(135deg, rgba(212,184,150,.08), rgba(212,184,150,.15));
+    box-shadow: var(--shadow-sm); transform: translateY(-1px);
+  }
+  .btn.io:active { transform: translateY(0); }
   button.btn.danger:hover { border-color: var(--danger); background: var(--danger-bg); }
 
   input, select, textarea {
@@ -473,8 +487,8 @@
   <div class="tab-page" id="tab-guests">
     <div class="toolbar">
       <button class="btn" onclick="openGuestModal()">＋ 新增宾客</button>
-      <a class="btn ghost" href="/api/guests/export" style="text-decoration:none">⬇️ 导出 Excel</a>
-      <button class="btn ghost" onclick="openImportModal()">⬆️ 导入 Excel</button>
+      <a class="btn io" href="/api/guests/export">⬇ 导出 Excel</a>
+      <button class="btn io" onclick="openImportModal()">⬆ 导入 Excel</button>
       <select id="guest-filter" onchange="renderGuestsTable()">
         <option value="">全部宾客</option>
         <option value="unseated">未排座</option>
@@ -486,7 +500,6 @@
       <input id="guest-search" placeholder="搜索姓名 / 家属 / 备注…" style="width:240px"
              oninput="renderGuestsTable()">
       <div class="spacer"></div>
-      <span class="hint">点击表头排序 · 状态列可直接下拉修改</span>
     </div>
     <div class="batch-bar" id="batch-bar" style="display:none">
       <span class="count" id="batch-count"></span>
