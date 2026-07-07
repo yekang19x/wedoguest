@@ -184,7 +184,7 @@
   #venue {
     position: relative; background: #fffcf8; margin: 0 auto;
     border: 1px solid var(--line); border-radius: var(--radius);
-    box-shadow: var(--shadow); overflow: hidden;
+    box-shadow: var(--shadow); overflow: visible;
     background-image:
       linear-gradient(var(--line-light) 1px, transparent 1px),
       linear-gradient(90deg, var(--line-light) 1px, transparent 1px);
@@ -219,7 +219,18 @@
     cursor: grab; user-select: none; touch-action: none; text-align: center; line-height: 1.15;
     transition: box-shadow 0.15s ease, border-color 0.15s ease;
   }
-  .table-dot:hover { box-shadow: var(--shadow); }
+  .table-dot:hover { box-shadow: var(--shadow); z-index: 10; }
+  .table-orbit { position: absolute; inset: 0; pointer-events: none; }
+  .orbit-tag {
+    position: absolute; white-space: nowrap;
+    background: rgba(255,255,255,.95); border: 1px solid var(--primary-light);
+    border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 500;
+    color: var(--primary-dark); box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    opacity: 0; transition: opacity 0.2s ease;
+    transform: translate(-50%, -50%);
+  }
+  .orbit-tag.declined { opacity: 0 !important; }
+  .table-dot:hover .orbit-tag { opacity: 1; }
   .table-dot.dragging { opacity: .8; cursor: grabbing; z-index: 5; box-shadow: var(--shadow-lg); }
   .table-dot.dragover { border-color: var(--gold); border-style: dashed; background: radial-gradient(circle, #fdf8ef, #faf3e5); }
   .table-dot.empty { border-style: dashed; border-color: var(--line); }
@@ -821,13 +832,22 @@ function renderFloor() {
     const title = `${t.table_no}${t.label ? '｜' + t.label : ''}｜${t.occupied}/${t.effective_capacity}人` +
       (t.guests.length ? `｜${t.guests.map(g => g.name).join('、')}` : '｜空桌') +
       (t.x == null ? '｜（自动摆放，拖动后保存位置）' : '');
+    const orbitR = px(d) / 2 + Math.max(18, px(d) * 0.25);
+    const guests = t.guests.filter(g => g.confirm_status !== '不参加');
+    const orbitHtml = guests.length ? `<div class="table-orbit">${guests.map((g, i) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * i) / guests.length;
+      const cx = px(d) / 2 + orbitR * Math.cos(angle);
+      const cy = px(d) / 2 + orbitR * Math.sin(angle);
+      return `<span class="orbit-tag" style="left:${cx}px;top:${cy}px">${esc(g.name)}<span style="color:var(--muted);font-size:10px"> ${seatSize(g)}</span></span>`;
+    }).join('')}</div>` : '';
     return `<div class="${cls.join(' ')}" data-table="${esc(t.table_no)}"
-        data-x="${p.x}" data-y="${p.y}" title="${esc(title)}"
+        data-x="${p.x}" data-y="${p.y}"
         style="left:${px(p.x - d / 2)}px; top:${px(p.y - d / 2)}px;
                width:${px(d)}px; height:${px(d)}px; font-size:${fontBase}px">
         <span class="tno" style="font-size:${fontBase * 1.15}px">${esc(t.table_no)}</span>
         ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
         <span class="tocc">${t.occupied}/${t.effective_capacity}</span>
+        ${orbitHtml}
       </div>`;
   }).join('');
 
