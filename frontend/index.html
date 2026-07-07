@@ -379,7 +379,7 @@
   #modal-backdrop.show { display: flex; }
   #modal {
     background: var(--card-elevated); border-radius: var(--radius-lg);
-    padding: 28px 30px; width: min(540px, 92vw); max-height: 86vh;
+    padding: 28px 30px; width: min(600px, 92vw); max-height: 86vh;
     overflow: auto; box-shadow: var(--shadow-lg);
     border: 1px solid var(--line);
     animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -948,18 +948,62 @@ function openTableDetail(tableNo) {
       <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
       <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
     </div>`).join('') || '<div class="empty-note">空桌 — 从右侧「未安排宾客」拖名牌进来</div>';
+
+  const others = state.tables.filter(x => x.table_no !== tableNo);
+
   showModal(`
-    <h3>${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}
+    <h3>${esc(t.table_no)}${t.table_no.includes('桌') ? '' : ' 桌'}
       <span style="font-weight:400;font-size:13px;color:var(--muted)">
-        ${t.occupied}/${t.effective_capacity} 人${t.capacity === null ? '（默认容量）' : ''}
-        ${t.x != null ? `· 位于 (${t.x}, ${t.y}) 米` : '· 未摆放（自动位置）'}
+        ${t.occupied}/${t.effective_capacity} 人
       </span></h3>
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-row"><label>备注名</label>
+        <input id="td-label" value="${esc(t.label)}" placeholder="如：男方亲戚"></div>
+      <div class="form-row"><label>容量（留空 = 默认 ${state.config.default_capacity}）</label>
+        <input id="td-cap" type="number" min="1" value="${t.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
+    </div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--ink)">宾客名单</div>
     <div>${rows}</div>
+    <div id="td-swap-area"></div>
     <div class="modal-actions">
-      <button class="btn ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑桌子</button>
-      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">调换桌子</button>
-      <button class="btn" onclick="closeModal()">关闭</button>
+      <button class="btn danger" style="margin-right:auto" onclick="removeTable('${esc(t.table_no)}')">删除此桌</button>
+      ${others.length ? `<button class="btn ghost" onclick="showSwapRow('${esc(tableNo)}')">⇄ 调换桌子</button>` : ''}
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="saveTableInline('${esc(t.table_no)}')">保存</button>
     </div>`);
+}
+
+function showSwapRow(tableNo) {
+  const others = state.tables.filter(x => x.table_no !== tableNo);
+  const opts = others.map(x => {
+    const lbl = `${x.table_no}${x.label ? '｜' + x.label : ''}（${x.occupied}/${x.effective_capacity}）`;
+    return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
+  }).join('');
+  document.getElementById('td-swap-area').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px">
+      <select id="td-swap" style="flex:1">${opts}</select>
+      <button class="btn sm ghost" onclick="doSwapTables('${esc(tableNo)}', document.getElementById('td-swap').value)">确定</button>
+      <button class="btn sm ghost" onclick="openTableDetail('${esc(tableNo)}')">取消</button>
+    </div>`;
+}
+
+async function saveTableInline(origNo) {
+  const capRaw = document.getElementById('td-cap').value.trim();
+  const label = document.getElementById('td-label').value.trim();
+  const capacity = capRaw ? parseInt(capRaw, 10) : null;
+  const orig = tableByNo(origNo);
+  const body = {
+    table_no: origNo,
+    label, capacity,
+    x: orig?.x ?? null,
+    y: orig?.y ?? null,
+  };
+  try {
+    await api('PUT', `/api/tables/${encodeURIComponent(origNo)}`, body);
+    closeModal();
+    await reload();
+    toast('已保存');
+  } catch (e) { toast(e.message, true); }
 }
 
 function statusTag(st) {
@@ -1112,9 +1156,7 @@ function showModal(html) {
 function closeModal() {
   document.getElementById('modal-backdrop').classList.remove('show');
 }
-document.getElementById('modal-backdrop').addEventListener('click', e => {
-  if (e.target.id === 'modal-backdrop') closeModal();
-});
+document.getElementById('modal-backdrop').addEventListener('click', e => {});
 
 function tableOptions(selected, includeNew) {
   let html = `<option value=""${!selected ? ' selected' : ''}>（未安排）</option>` +
