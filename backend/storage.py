@@ -22,6 +22,7 @@ LEGACY_GUEST_HEADER_ALIASES = {"总人数": "预计人数"}
 
 INVITE_STATUSES = ["未发送", "已发送"]
 CONFIRM_STATUSES = ["待确认", "已确认", "不参加"]
+WECHAT_STATUSES = ["未发送", "已发送"]
 
 DEFAULT_CONFIG = {
     "default_capacity": 10,   # 默认单桌容纳人数
@@ -45,7 +46,8 @@ CREATE TABLE IF NOT EXISTS guests (
     table_no TEXT NOT NULL DEFAULT '',
     invite_status TEXT NOT NULL DEFAULT '未发送',
     confirm_status TEXT NOT NULL DEFAULT '待确认',
-    note TEXT NOT NULL DEFAULT ''
+    note TEXT NOT NULL DEFAULT '',
+    wechat_sent TEXT NOT NULL DEFAULT '未发送'
 );
 CREATE TABLE IF NOT EXISTS tables (
     table_no TEXT PRIMARY KEY,
@@ -79,6 +81,11 @@ def ensure_data_files():
             _migrate_legacy()
         else:
             _seed_demo_data()
+    # 版本升级：补新增列
+    with _conn() as c:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(guests)").fetchall()}
+        if "wechat_sent" not in cols:
+            c.execute("ALTER TABLE guests ADD COLUMN wechat_sent TEXT NOT NULL DEFAULT '未发送'")
     # 配置缺键补默认（版本升级新增配置项时自动补齐）
     config = load_config_raw()
     missing = {k: v for k, v in DEFAULT_CONFIG.items() if k not in config}
@@ -96,11 +103,11 @@ def _seed_demo_data():
     ])
     save_guests([
         {"id": 1, "name": "张伟", "party_size": 3, "confirmed_size": 2, "family_names": "李娜,张小宝",
-         "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家"},
+         "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家", "wechat_sent": "已发送"},
         {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 2, "family_names": "刘强",
-         "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": ""},
+         "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": "", "wechat_sent": "未发送"},
         {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 1, "family_names": "",
-         "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学"},
+         "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学", "wechat_sent": "未发送"},
     ])
     save_config(dict(DEFAULT_CONFIG))
 
@@ -118,10 +125,10 @@ def save_guests(guests: list[dict]):
         c.execute("DELETE FROM guests")
         c.executemany(
             "INSERT INTO guests (id, name, party_size, confirmed_size, family_names,"
-            " table_no, invite_status, confirm_status, note)"
+            " table_no, invite_status, confirm_status, note, wechat_sent)"
             " VALUES (:id, :name, :party_size, :confirmed_size, :family_names,"
-            " :table_no, :invite_status, :confirm_status, :note)",
-            guests,
+            " :table_no, :invite_status, :confirm_status, :note, :wechat_sent)",
+            [{**g, "wechat_sent": g.get("wechat_sent", "未发送")} for g in guests],
         )
 
 

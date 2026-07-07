@@ -16,7 +16,7 @@ from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 
 import storage
-from storage import CONFIRM_STATUSES, INVITE_STATUSES
+from storage import CONFIRM_STATUSES, INVITE_STATUSES, WECHAT_STATUSES
 
 app = FastAPI(title="婚礼宾客统计系统")
 
@@ -35,6 +35,7 @@ class GuestIn(BaseModel):
     table_no: str = ""
     invite_status: str = "未发送"
     confirm_status: str = "待确认"
+    wechat_sent: str = "未发送"
     note: str = ""
     force: bool = False  # 目标桌超容时是否强制安排
 
@@ -58,6 +59,8 @@ class BatchUpdateIn(BaseModel):
     table_no: str | None = None
     invite_status: str | None = None
     confirm_status: str | None = None
+    note: str | None = None
+    wechat_sent: str | None = None
 
 
 class ConfigIn(BaseModel):
@@ -72,11 +75,13 @@ class ConfigIn(BaseModel):
 
 # ---------- 内部工具 ----------
 
-def _validate_statuses(invite_status: str, confirm_status: str):
+def _validate_statuses(invite_status: str, confirm_status: str, wechat_sent: str):
     if invite_status not in INVITE_STATUSES:
         raise HTTPException(400, f"邀请函状态必须是 {INVITE_STATUSES} 之一")
     if confirm_status not in CONFIRM_STATUSES:
         raise HTTPException(400, f"确认状态必须是 {CONFIRM_STATUSES} 之一")
+    if wechat_sent not in WECHAT_STATUSES:
+        raise HTTPException(400, f"微信通知状态必须是 {WECHAT_STATUSES} 之一")
 
 
 def _seat_size(g: dict) -> int:
@@ -184,13 +189,14 @@ def _guest_fields(body: GuestIn) -> dict:
         "table_no": body.table_no.strip(),
         "invite_status": body.invite_status,
         "confirm_status": body.confirm_status,
+        "wechat_sent": body.wechat_sent,
         "note": body.note.strip(),
     }
 
 
 @app.post("/api/guests")
 def create_guest(body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status)
+    _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
@@ -204,7 +210,7 @@ def create_guest(body: GuestIn):
 
 @app.put("/api/guests/{gid}")
 def update_guest(gid: int, body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status)
+    _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
@@ -232,6 +238,8 @@ def batch_update_guests(body: BatchUpdateIn):
         raise HTTPException(400, f"invite_status 必须是 {'、'.join(INVITE_STATUSES)} 之一")
     if body.confirm_status is not None and body.confirm_status not in CONFIRM_STATUSES:
         raise HTTPException(400, f"confirm_status 必须是 {'、'.join(CONFIRM_STATUSES)} 之一")
+    if body.wechat_sent is not None and body.wechat_sent not in WECHAT_STATUSES:
+        raise HTTPException(400, f"wechat_sent 必须是 {'、'.join(WECHAT_STATUSES)} 之一")
     guests = storage.load_guests()
     id_set = set(body.ids)
     updated = 0
@@ -244,6 +252,10 @@ def batch_update_guests(body: BatchUpdateIn):
             g["invite_status"] = body.invite_status
         if body.confirm_status is not None:
             g["confirm_status"] = body.confirm_status
+        if body.note is not None:
+            g["note"] = body.note
+        if body.wechat_sent is not None:
+            g["wechat_sent"] = body.wechat_sent
         updated += 1
     storage.save_guests(guests)
     return {"updated": updated}

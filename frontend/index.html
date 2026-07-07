@@ -505,7 +505,9 @@
       <span class="count" id="batch-count"></span>
       <button class="btn sm ghost" onclick="batchSetTable()">批量换桌</button>
       <button class="btn sm ghost" onclick="batchSetField('invite_status', ['未发送','已发送'], '邀请状态')">批量设置邀请状态</button>
+      <button class="btn sm ghost" onclick="batchSetField('wechat_sent', ['未发送','已发送'], '微信通知')">批量设置微信通知</button>
       <button class="btn sm ghost" onclick="batchSetField('confirm_status', ['待确认','已确认','不参加'], '确认状态')">批量设置确认状态</button>
+      <button class="btn sm ghost" onclick="batchSetNote()">批量修改备注</button>
       <button class="btn sm danger" onclick="batchDelete()">批量删除</button>
       <div class="spacer"></div>
       <button class="btn sm ghost" onclick="clearSelection()">取消选择</button>
@@ -518,6 +520,7 @@
         <th>确认人数</th><th>家属姓名</th>
         <th class="sortable" data-sort="table_no" onclick="sortGuests('table_no')">桌号</th>
         <th>邀请函</th>
+        <th>微信通知</th>
         <th class="sortable" data-sort="confirm_status" onclick="sortGuests('confirm_status')">确认状态</th>
         <th>备注</th><th style="width:190px">操作</th>
       </tr></thead>
@@ -1051,6 +1054,7 @@ function renderGuestsTable() {
         <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
         <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
         <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
+        <td>${inlineSelect(g, 'wechat_sent', ['未发送', '已发送'])}</td>
         <td>${inlineSelect(g, 'confirm_status', ['待确认', '已确认', '不参加'])}</td>
         <td>${esc(g.note)}</td>
         <td><div class="ops">
@@ -1060,7 +1064,7 @@ function renderGuestsTable() {
         </div></td>
       </tr>`).join('');
   document.querySelector('#guests-table tbody').innerHTML =
-    rows || '<tr><td colspan="10" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
+    rows || '<tr><td colspan="11" style="color:var(--muted)">暂无宾客，点击「新增宾客」开始录入</td></tr>';
 }
 
 function renderTablesTable() {
@@ -1182,6 +1186,11 @@ function openGuestModal(gid) {
           <option${(g?.invite_status ?? '未发送') === '未发送' ? ' selected' : ''}>未发送</option>
           <option${g?.invite_status === '已发送' ? ' selected' : ''}>已发送</option>
         </select></div>
+      <div class="form-row"><label>微信通知</label>
+        <select id="gm-wechat">
+          <option${(g?.wechat_sent ?? '未发送') === '未发送' ? ' selected' : ''}>未发送</option>
+          <option${g?.wechat_sent === '已发送' ? ' selected' : ''}>已发送</option>
+        </select></div>
       <div class="form-row"><label>确认状态</label>
         <select id="gm-confirm">
           <option${(g?.confirm_status ?? '待确认') === '待确认' ? ' selected' : ''}>待确认</option>
@@ -1207,6 +1216,7 @@ async function saveGuest(gid) {
     family_names: document.getElementById('gm-family').value.trim(),
     table_no: document.getElementById('gm-table').value,
     invite_status: document.getElementById('gm-invite').value,
+    wechat_sent: document.getElementById('gm-wechat').value,
     confirm_status: document.getElementById('gm-confirm').value,
     note: document.getElementById('gm-note').value.trim(),
   };
@@ -1247,6 +1257,17 @@ function batchSetField(field, options, label) {
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">取消</button>
       <button class="btn" onclick="submitBatch({['${field}']: document.getElementById('batch-val').value})">确定</button>
+    </div>`);
+}
+
+function batchSetNote() {
+  showModal(`
+    <h3>批量修改备注（${selectedIds.size} 组宾客）</h3>
+    <div class="form-row"><label>备注内容</label>
+      <input type="text" id="batch-note" placeholder="统一设置备注内容"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitBatch({note: document.getElementById('batch-note').value})">确定</button>
     </div>`);
 }
 
