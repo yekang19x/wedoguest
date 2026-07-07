@@ -914,12 +914,16 @@ function bindFloorInteractions(venue, scale) {
         dot.style.left = Math.max(0, Math.min(maxL, start.left + dx)) + 'px';
         dot.style.top = Math.max(0, Math.min(maxT, start.top + dy)) + 'px';
       };
-      const onUp = async () => {
+      const onUp = async (upEvent) => {
         floorDragging = false;
         dot.removeEventListener('pointermove', onMove);
         dot.removeEventListener('pointerup', onUp);
         dot.classList.remove('dragging');
-        if (!moved) { swapMode ? handleSwapClick(no) : openTableDetail(no); return; }
+        if (!moved) {
+          if (upEvent.ctrlKey || upEvent.metaKey || swapMode) handleSwapClick(no);
+          else openTableDetail(no);
+          return;
+        }
         const x = (dot.offsetLeft / scale) + d / 2;
         const y = (dot.offsetTop / scale) + d / 2;
         try {
@@ -1465,6 +1469,7 @@ function handleSwapClick(tableNo) {
   if (!swapSource) {
     swapSource = tableNo;
     document.querySelector(`.table-dot[data-table="${CSS.escape(tableNo)}"]`)?.classList.add('swap-source');
+    toast(`已选中「${tableNo}」桌，Ctrl+点击另一张桌完成调换`);
   } else if (swapSource === tableNo) {
     document.querySelector(`.table-dot[data-table="${CSS.escape(tableNo)}"]`)?.classList.remove('swap-source');
     swapSource = null;
