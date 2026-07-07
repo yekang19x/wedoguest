@@ -459,7 +459,7 @@
       <button class="btn" onclick="openGuestModal()">＋ 新增宾客</button>
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
       <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
-      <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 调换座位</button>
+      <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 调换桌子</button>
       <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
         <input type="range" id="zoom-range" min="100" max="180" value="150" step="10"
                style="width:110px;padding:0" oninput="setZoom(this.value)">
@@ -956,7 +956,7 @@ function openTableDetail(tableNo) {
     <div>${rows}</div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑桌子</button>
-      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">调换座位</button>
+      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">调换桌子</button>
       <button class="btn" onclick="closeModal()">关闭</button>
     </div>`);
 }
@@ -1440,7 +1440,7 @@ function openSwapModal(tableNo) {
     return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
   }).join('');
   showModal(`
-    <h3>调换座位：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
+    <h3>调换桌子：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
     <div class="sub" style="margin-bottom:12px">桌号与位置不变，调换两桌的备注名、容量和全部宾客。</div>
     <div class="form-row"><label>与哪张桌调换</label>
       <select id="swap-target">${opts}</select></div>
