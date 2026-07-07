@@ -201,6 +201,22 @@
   }
   #toast.show { display: block; }
   #toast.error { background: var(--danger); }
+
+  /* ---- 交换模式 ---- */
+  #swap-mode-btn.active-mode { background: var(--gold); color: #fff; border-color: var(--gold); }
+  .table-dot.swap-source {
+    border-color: var(--gold) !important; border-width: 3px;
+    animation: swap-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes swap-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(201, 176, 131, .4); }
+    50% { box-shadow: 0 0 16px rgba(201, 176, 131, .7); }
+  }
+
+  /* ---- 排序表头 ---- */
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--primary-dark); }
+  .sort-arrow { font-size: 11px; opacity: .6; }
 </style>
 </head>
 <body>
@@ -222,6 +238,7 @@
     <div class="toolbar">
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
       <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
+      <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 交换宾客</button>
       <span class="hint" id="venue-info"></span>
       <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
         <input type="range" id="zoom-range" min="50" max="250" value="100" step="10"
@@ -249,10 +266,18 @@
       <button class="btn" onclick="openGuestModal()">＋ 新增宾客</button>
       <a class="btn ghost" href="/api/guests/export" style="text-decoration:none">⬇️ 导出 Excel</a>
       <button class="btn ghost" onclick="openImportModal()">⬆️ 导入 Excel</button>
+      <select id="guest-filter" onchange="renderGuestsTable()">
+        <option value="">全部宾客</option>
+        <option value="unseated">未排座</option>
+        <option value="seated">已排座</option>
+        <option value="已确认">已确认</option>
+        <option value="待确认">待确认</option>
+        <option value="不参加">不参加</option>
+      </select>
       <input id="guest-search" placeholder="搜索姓名 / 家属 / 备注…" style="width:240px"
              oninput="renderGuestsTable()">
       <div class="spacer"></div>
-      <span class="hint">状态列可直接下拉修改</span>
+      <span class="hint">点击表头排序 · 状态列可直接下拉修改</span>
     </div>
     <div class="batch-bar" id="batch-bar" style="display:none">
       <span class="count" id="batch-count"></span>
@@ -266,8 +291,13 @@
     <table class="list" id="guests-table">
       <thead><tr>
         <th style="width:32px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"></th>
-        <th>姓名</th><th>预计人数</th><th>确认人数</th><th>家属姓名</th><th>桌号</th>
-        <th>邀请函</th><th>确认状态</th><th>备注</th><th style="width:190px">操作</th>
+        <th class="sortable" data-sort="name" onclick="sortGuests('name')">姓名</th>
+        <th class="sortable" data-sort="party_size" onclick="sortGuests('party_size')">预计人数</th>
+        <th>确认人数</th><th>家属姓名</th>
+        <th class="sortable" data-sort="table_no" onclick="sortGuests('table_no')">桌号</th>
+        <th>邀请函</th>
+        <th class="sortable" data-sort="confirm_status" onclick="sortGuests('confirm_status')">确认状态</th>
+        <th>备注</th><th style="width:190px">操作</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -636,7 +666,7 @@ function bindFloorInteractions(venue, scale) {
         dot.removeEventListener('pointermove', onMove);
         dot.removeEventListener('pointerup', onUp);
         dot.classList.remove('dragging');
-        if (!moved) { openTableDetail(no); return; }
+        if (!moved) { swapMode ? handleSwapClick(no) : openTableDetail(no); return; }
         const x = (dot.offsetLeft / scale) + d / 2;
         const y = (dot.offsetTop / scale) + d / 2;
         try {
@@ -674,6 +704,7 @@ function openTableDetail(tableNo) {
     <div>${rows}</div>
     <div class="modal-actions">
       <button class="btn ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑桌子</button>
+      <button class="btn ghost" onclick="openSwapModal('${esc(t.table_no)}')">交换宾客</button>
       <button class="btn" onclick="closeModal()">关闭</button>
     </div>`);
 }
@@ -723,12 +754,44 @@ function updateBatchBar() {
   document.getElementById('batch-count').textContent = `已选 ${n} 组宾客`;
 }
 
+let guestSort = { field: '', asc: true };
+function sortGuests(field) {
+  if (guestSort.field === field) guestSort.asc = !guestSort.asc;
+  else { guestSort.field = field; guestSort.asc = true; }
+  renderGuestsTable();
+}
+
 function renderGuestsTable() {
   const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
-  const rows = state.guests
-    .filter(g => !kw || [g.name, g.family_names, g.note, g.table_no]
-      .some(v => String(v).toLowerCase().includes(kw)))
-    .map(g => `
+  const filter = document.getElementById('guest-filter')?.value || '';
+  let list = state.guests.filter(g => {
+    if (kw && ![g.name, g.family_names, g.note, g.table_no].some(v => String(v).toLowerCase().includes(kw))) return false;
+    if (filter === 'unseated') return !g.table_no;
+    if (filter === 'seated') return !!g.table_no;
+    if (filter === '已确认' || filter === '待确认' || filter === '不参加') return g.confirm_status === filter;
+    return true;
+  });
+  if (guestSort.field) {
+    const f = guestSort.field, dir = guestSort.asc ? 1 : -1;
+    list = list.slice().sort((a, b) => {
+      let va = a[f] ?? '', vb = b[f] ?? '';
+      if (f === 'table_no') {
+        if (!va && !vb) return 0;
+        if (!va) return 1;
+        if (!vb) return -1;
+        return String(va).localeCompare(String(vb), 'zh', { numeric: true }) * dir;
+      }
+      if (typeof va === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'zh') * dir;
+    });
+  }
+  document.querySelectorAll('#guests-table th.sortable').forEach(th => {
+    const s = th.dataset.sort, arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.remove();
+    if (s === guestSort.field)
+      th.insertAdjacentHTML('beforeend', `<span class="sort-arrow"> ${guestSort.asc ? '↑' : '↓'}</span>`);
+  });
+  const rows = list.map(g => `
       <tr>
         <td><input type="checkbox" ${selectedIds.has(g.id) ? 'checked' : ''} onchange="toggleSelect(${g.id})"></td>
         <td><b>${esc(g.name)}</b></td>
@@ -762,6 +825,7 @@ function renderTablesTable() {
             : `${t.occupied}/${t.effective_capacity}`}</td>
       <td><div class="ops">
         <button class="btn sm ghost" onclick="openTableModal('${esc(t.table_no)}')">编辑</button>
+        <button class="btn sm ghost" onclick="openSwapModal('${esc(t.table_no)}')">交换</button>
         <button class="btn sm danger" onclick="removeTable('${esc(t.table_no)}')">删除</button>
       </div></td>
     </tr>`).join('');
@@ -791,12 +855,53 @@ document.getElementById('modal-backdrop').addEventListener('click', e => {
   if (e.target.id === 'modal-backdrop') closeModal();
 });
 
-function tableOptions(selected) {
-  return `<option value=""${!selected ? ' selected' : ''}>（未安排）</option>` +
+function tableOptions(selected, includeNew) {
+  let html = `<option value=""${!selected ? ' selected' : ''}>（未安排）</option>` +
     state.tables.map(t => {
       const label = `${t.table_no}${t.label ? '｜' + t.label : ''}（${t.occupied}/${t.effective_capacity}）`;
       return `<option value="${esc(t.table_no)}"${t.table_no === selected ? ' selected' : ''}>${esc(label)}</option>`;
     }).join('');
+  if (includeNew) html += `<option value="__new__">＋ 新建桌子…</option>`;
+  return html;
+}
+
+function newTableFieldsHtml(prefix) {
+  return `<div id="${prefix}-new-fields" class="form-grid" style="display:none">
+    <div class="form-row"><label>新桌号 *</label>
+      <input id="${prefix}-new-no" value="${nextTableNo()}"></div>
+    <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity}）</label>
+      <input id="${prefix}-new-cap" type="number" min="1" placeholder="默认 ${state.config.default_capacity}"></div>
+    <div class="form-row full"><label>备注名</label>
+      <input id="${prefix}-new-label" placeholder="如：男方亲戚、大学同学"></div>
+  </div>`;
+}
+
+function onTableSelectChange(selectId, prefix) {
+  const fields = document.getElementById(prefix + '-new-fields');
+  if (document.getElementById(selectId).value === '__new__') {
+    fields.style.display = '';
+    document.getElementById(prefix + '-new-no').focus();
+  } else {
+    fields.style.display = 'none';
+  }
+}
+
+async function resolveTableTarget(selectId, prefix) {
+  const val = document.getElementById(selectId).value;
+  if (val !== '__new__') return val;
+  const no = document.getElementById(prefix + '-new-no').value.trim();
+  if (!no) { toast('请填写新桌号', true); return null; }
+  const capRaw = document.getElementById(prefix + '-new-cap').value.trim();
+  try {
+    await api('POST', '/api/tables', {
+      table_no: no,
+      label: document.getElementById(prefix + '-new-label').value.trim(),
+      capacity: capRaw ? parseInt(capRaw, 10) : null,
+      x: null, y: null,
+    });
+    await reload();
+    return no;
+  } catch (e) { toast(e.message, true); return null; }
 }
 
 /* ---- 宾客新增 / 编辑 ---- */
@@ -863,11 +968,18 @@ function batchSetTable() {
   showModal(`
     <h3>批量换桌（${selectedIds.size} 组宾客）</h3>
     <div class="form-row"><label>目标桌号</label>
-      <select id="batch-table">${tableOptions('')}</select></div>
+      <select id="batch-table" onchange="onTableSelectChange('batch-table','batch')">${tableOptions('', true)}</select></div>
+    ${newTableFieldsHtml('batch')}
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">取消</button>
-      <button class="btn" onclick="submitBatch({table_no: document.getElementById('batch-table').value})">确定</button>
+      <button class="btn" onclick="submitBatchTable()">确定</button>
     </div>`);
+}
+
+async function submitBatchTable() {
+  const target = await resolveTableTarget('batch-table', 'batch');
+  if (target === null) return;
+  await submitBatch({table_no: target});
 }
 
 function batchSetField(field, options, label) {
@@ -986,8 +1098,9 @@ function openMoveModal(gid, presetTarget) {
   showModal(`
     <h3>换桌：${esc(g.name)}（当前在 ${from}）</h3>
     <div class="form-row"><label>目标位置</label>
-      <select id="mv-target">${tableOptions(presetTarget !== undefined ? presetTarget : g.table_no)}</select>
+      <select id="mv-target" onchange="onTableSelectChange('mv-target','mv')">${tableOptions(presetTarget !== undefined ? presetTarget : g.table_no, true)}</select>
     </div>
+    ${newTableFieldsHtml('mv')}
     ${familyRow}
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">取消</button>
@@ -996,7 +1109,8 @@ function openMoveModal(gid, presetTarget) {
 }
 
 async function submitMove(gid) {
-  const target = document.getElementById('mv-target').value;
+  const target = await resolveTableTarget('mv-target', 'mv');
+  if (target === null) return;
   const fam = document.getElementById('mv-family');
   await doMove(gid, target, fam ? fam.checked : true);
 }
@@ -1015,6 +1129,61 @@ async function doMove(gid, target, withFamily) {
   } catch (e) { toast(e.message, true); }
 }
 
+/* ---- 桌子交换宾客 ---- */
+let swapMode = false, swapSource = null;
+
+function toggleSwapMode() {
+  swapMode = !swapMode;
+  swapSource = null;
+  const btn = document.getElementById('swap-mode-btn');
+  btn.classList.toggle('active-mode', swapMode);
+  document.querySelectorAll('.table-dot.swap-source').forEach(d => d.classList.remove('swap-source'));
+  if (swapMode) toast('交换模式：点击第一张桌选中，再点击第二张桌完成交换。再次点击按钮退出。');
+}
+
+function handleSwapClick(tableNo) {
+  if (!swapSource) {
+    swapSource = tableNo;
+    document.querySelector(`.table-dot[data-table="${CSS.escape(tableNo)}"]`)?.classList.add('swap-source');
+  } else if (swapSource === tableNo) {
+    document.querySelector(`.table-dot[data-table="${CSS.escape(tableNo)}"]`)?.classList.remove('swap-source');
+    swapSource = null;
+  } else {
+    doSwapTables(swapSource, tableNo);
+  }
+}
+
+function openSwapModal(tableNo) {
+  const t = tableByNo(tableNo);
+  if (!t) return;
+  const others = state.tables.filter(x => x.table_no !== tableNo);
+  if (!others.length) { toast('没有其他桌子可交换', true); return; }
+  const opts = others.map(x => {
+    const lbl = `${x.table_no}${x.label ? '｜' + x.label : ''}（${x.occupied}/${x.effective_capacity}）`;
+    return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
+  }).join('');
+  showModal(`
+    <h3>交换宾客：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
+    <div class="sub" style="margin-bottom:12px">桌号与位置不变，交换两桌的备注名、容量和全部宾客。</div>
+    <div class="form-row"><label>与哪张桌交换</label>
+      <select id="swap-target">${opts}</select></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="doSwapTables('${esc(tableNo)}', document.getElementById('swap-target').value)">确定交换</button>
+    </div>`);
+}
+
+async function doSwapTables(tableA, tableB) {
+  try {
+    await api('POST', '/api/tables/swap', { table_a: tableA, table_b: tableB });
+    closeModal();
+    swapSource = null;
+    if (swapMode) toggleSwapMode();
+    await reload();
+    toast(`${tableA} 桌 ⇄ ${tableB} 桌 已交换`);
+  } catch (e) { toast(e.message, true); }
+}
+
 /* ---- 桌子新增 / 编辑 ---- */
 // 下一个可用的数字桌号（现有最大值 + 1，跳过含「4」的数字，婚礼习俗避 4）
 function nextTableNo() {
@@ -1024,13 +1193,45 @@ function nextTableNo() {
   return String(n);
 }
 
+function nextTableNos(count) {
+  const nums = state.tables.map(t => /^\d+$/.test(t.table_no) ? parseInt(t.table_no, 10) : 0);
+  let n = Math.max(0, ...nums) + 1;
+  const result = [];
+  while (result.length < count) {
+    while (String(n).includes('4')) n++;
+    result.push(String(n));
+    n++;
+  }
+  return result;
+}
+
+function onTableCountChange() {
+  const count = parseInt(document.getElementById('tm-count').value, 10) || 1;
+  const noRow = document.getElementById('tm-no-row');
+  const preview = document.getElementById('tm-preview');
+  if (count > 1) {
+    noRow.style.display = 'none';
+    const nos = nextTableNos(count);
+    preview.style.display = '';
+    preview.innerHTML = `<label>将创建桌号</label><div class="sub">${nos.join('、')}</div>`;
+  } else {
+    noRow.style.display = '';
+    preview.style.display = 'none';
+  }
+}
+
 function openTableModal(tableNo) {
   const t = tableNo ? tableByNo(tableNo) : null;
+  const isNew = !t;
   showModal(`
     <h3>${t ? `编辑桌子「${esc(t.table_no)}」` : '新增桌子'}</h3>
     <div class="form-grid">
-      <div class="form-row"><label>桌号 *（如 1、2 或 主桌）</label>
+      ${isNew ? `<div class="form-row"><label>数量</label>
+        <input id="tm-count" type="number" min="1" max="50" value="1"
+               oninput="onTableCountChange()"></div>` : ''}
+      <div class="form-row" id="tm-no-row"><label>桌号 *（如 1、2 或 主桌）</label>
         <input id="tm-no" value="${esc(t?.table_no ?? nextTableNo())}"></div>
+      <div class="form-row full" id="tm-preview" style="display:none"></div>
       <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity} 人）</label>
         <input id="tm-cap" type="number" min="1" value="${t?.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
       <div class="form-row full"><label>备注名（如：男方亲戚、大学同学）</label>
@@ -1046,12 +1247,30 @@ function openTableModal(tableNo) {
 
 async function saveTable(origNo) {
   const capRaw = document.getElementById('tm-cap').value.trim();
+  const label = document.getElementById('tm-label').value.trim();
+  const capacity = capRaw ? parseInt(capRaw, 10) : null;
+
+  const countEl = document.getElementById('tm-count');
+  const count = (!origNo && countEl) ? (parseInt(countEl.value, 10) || 1) : 1;
+
+  if (count > 1) {
+    const nos = nextTableNos(count);
+    try {
+      for (const no of nos) {
+        await api('POST', '/api/tables', { table_no: no, label, capacity, x: null, y: null });
+      }
+      closeModal();
+      await reload();
+      toast(`已新增 ${nos.length} 张桌子（${nos[0]} ~ ${nos[nos.length - 1]}）`);
+    } catch (e) { toast(e.message, true); await reload(); }
+    return;
+  }
+
   const orig = origNo ? tableByNo(origNo) : null;
   const body = {
     table_no: document.getElementById('tm-no').value.trim(),
-    label: document.getElementById('tm-label').value.trim(),
-    capacity: capRaw ? parseInt(capRaw, 10) : null,
-    x: orig?.x ?? null,   // 保留已摆放的位置
+    label, capacity,
+    x: orig?.x ?? null,
     y: orig?.y ?? null,
   };
   if (!body.table_no) { toast('请填写桌号', true); return; }

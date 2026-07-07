@@ -525,6 +525,35 @@ def update_table(table_no: str, body: TableIn):
     return table
 
 
+class SwapTablesIn(BaseModel):
+    table_a: str
+    table_b: str
+
+
+@app.post("/api/tables/swap")
+def swap_tables(body: SwapTablesIn):
+    """交换两桌的备注名、容量和全部宾客，桌号与位置不变。"""
+    a_no, b_no = body.table_a.strip(), body.table_b.strip()
+    if a_no == b_no:
+        raise HTTPException(400, "不能与自己交换")
+    tables = storage.load_tables()
+    a = next((t for t in tables if t["table_no"] == a_no), None)
+    b = next((t for t in tables if t["table_no"] == b_no), None)
+    if not a or not b:
+        raise HTTPException(404, "桌号不存在")
+    a["label"], b["label"] = b["label"], a["label"]
+    a["capacity"], b["capacity"] = b["capacity"], a["capacity"]
+    storage.save_tables(tables)
+    guests = storage.load_guests()
+    for g in guests:
+        if g["table_no"] == a_no:
+            g["table_no"] = b_no
+        elif g["table_no"] == b_no:
+            g["table_no"] = a_no
+    storage.save_guests(guests)
+    return {"ok": True}
+
+
 @app.post("/api/tables/reset-positions")
 def reset_table_positions():
     """清空所有桌子坐标 → 平面图恢复按桌号有序的自动排列。"""
