@@ -1365,9 +1365,8 @@ async function batchDelete() {
 }
 
 async function quickUpdate(gid, field, value) {
-  const g = guestById(gid);
   try {
-    await apiWithForce('PUT', `/api/guests/${gid}`, {...g, [field]: value});
+    await api('PATCH', '/api/guests/batch', { ids: [gid], [field]: value });
     await reload();
     toast('已更新');
   } catch (e) { toast(e.message, true); await reload(); }
