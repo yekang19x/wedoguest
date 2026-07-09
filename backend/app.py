@@ -132,8 +132,9 @@ def _find_guest(guests: list[dict], gid: int) -> dict:
 
 
 def _build_stats(guests: list[dict], config: dict) -> dict:
-    # 已确认宾客按「确认人数」计，待确认按「预计人数」计，不参加不计座
-    confirmed = sum(g["confirmed_size"] for g in guests if g["confirm_status"] == "已确认")
+    # 统计栏展示录入的预计与确认总量；占座人数仍由 _seat_size 按状态计算。
+    expected = sum(g["party_size"] for g in guests)
+    confirmed = sum(g["confirmed_size"] for g in guests)
     pending = sum(g["party_size"] for g in guests if g["confirm_status"] == "待确认")
     declined = sum(g["party_size"] for g in guests if g["confirm_status"] == "不参加")
     return {
@@ -142,7 +143,7 @@ def _build_stats(guests: list[dict], config: dict) -> dict:
         "confirmed": confirmed,
         "pending": pending,
         "declined": declined,
-        "expected": confirmed + pending,
+        "expected": expected,
         "seated": sum(_seat_size(g) for g in guests if g["table_no"]),
         "unseated": sum(_seat_size(g) for g in guests if not g["table_no"]),
         "guest_count": len(guests),

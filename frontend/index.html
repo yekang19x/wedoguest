@@ -319,11 +319,21 @@
   .detail-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
 
   /* ---- 表格 ---- */
+  .guest-table-wrap {
+    max-height: calc(100vh - 210px);
+    overflow: auto;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
   table.list {
     width: 100%; border-collapse: separate; border-spacing: 0;
     background: var(--card-elevated); border-radius: var(--radius-lg);
     overflow: hidden; box-shadow: var(--shadow);
     border: 1px solid var(--line);
+  }
+  .guest-table-wrap table.list {
+    overflow: visible;
+    box-shadow: none;
   }
   table.list th, table.list td {
     padding: 11px 14px; text-align: left;
@@ -334,6 +344,11 @@
     font-weight: 600; font-size: 11px; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.8px;
     position: sticky; top: 0; z-index: 1;
+  }
+  .guest-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
   }
   table.list tr:last-child td { border-bottom: none; }
   table.list tbody tr { transition: background var(--transition); }
@@ -509,7 +524,7 @@
         <option value="待确认">待确认</option>
         <option value="不参加">不参加</option>
       </select>
-      <input id="guest-search" placeholder="搜索姓名 / 家属 / 备注…" style="width:240px"
+      <input id="guest-search" placeholder="搜索姓名 / 首字母 / 家属 / 备注…" style="width:260px"
              oninput="renderGuestsTable()">
       <div class="spacer"></div>
     </div>
@@ -524,20 +539,24 @@
       <div class="spacer"></div>
       <button class="btn sm ghost" onclick="clearSelection()">取消选择</button>
     </div>
-    <table class="list" id="guests-table">
-      <thead><tr>
-        <th style="width:32px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"></th>
-        <th class="sortable" data-sort="name" onclick="sortGuests('name')">姓名</th>
-        <th class="sortable" data-sort="party_size" onclick="sortGuests('party_size')">预计人数</th>
-        <th>确认人数</th><th>家属姓名</th>
-        <th class="sortable" data-sort="table_no" onclick="sortGuests('table_no')">桌号</th>
-        <th>邀请函</th>
-        <th>微信通知</th>
-        <th class="sortable" data-sort="confirm_status" onclick="sortGuests('confirm_status')">确认状态</th>
-        <th>备注</th><th style="width:190px">操作</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="guest-table-wrap">
+      <table class="list" id="guests-table">
+        <thead><tr>
+          <th style="width:32px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"></th>
+          <th class="sortable" data-sort="name" onclick="sortGuests('name')">姓名</th>
+          <th class="sortable" data-sort="party_size" onclick="sortGuests('party_size')">预计人数</th>
+          <th class="sortable" data-sort="note" onclick="sortGuests('note')">备注</th>
+          <th>家属姓名</th>
+          <th>确认人数</th>
+          <th class="sortable" data-sort="table_no" onclick="sortGuests('table_no')">桌号</th>
+          <th>邀请函</th>
+          <th>微信通知</th>
+          <th class="sortable" data-sort="confirm_status" onclick="sortGuests('confirm_status')">确认状态</th>
+          <th style="width:190px">操作</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="tab-page" id="tab-tables">
@@ -568,7 +587,7 @@
       <div class="form-row">
         <label>人数预算（计划宴请总人数）</label>
         <input type="number" id="cfg-budget" min="0">
-        <span class="desc">统计条会将「预计出席」与该预算对比，超出时标红。</span>
+        <span class="desc">统计条会将「预计到场」与该预算对比，超出时标红。</span>
       </div>
       <h3>会场设置</h3>
       <div class="form-grid">
@@ -607,6 +626,27 @@ let currentTab = 'floor';
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g,
     c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const PINYIN_INITIALS = 'abcdefghjklmnopqrstwxyz';
+const PINYIN_BOUNDARIES = '阿八嚓咑妸发旮哈讥咔垃妈拿噢啪期然撒塌挖昔压匝';
+
+function chineseInitial(ch) {
+  if (/^[a-z0-9]$/i.test(ch)) return ch.toLowerCase();
+  for (let i = PINYIN_BOUNDARIES.length - 1; i >= 0; i--) {
+    if (ch.localeCompare(PINYIN_BOUNDARIES[i], 'zh-Hans-CN') >= 0) return PINYIN_INITIALS[i];
+  }
+  return ch;
+}
+
+function nameInitials(text) {
+  return Array.from(String(text ?? '')).map(chineseInitial).join('');
+}
+
+function guestMatchesSearch(g, kw) {
+  if (!kw) return true;
+  const fields = [g.name, nameInitials(g.name), g.family_names, nameInitials(g.family_names), g.note, g.table_no];
+  return fields.some(v => String(v).toLowerCase().includes(kw));
 }
 
 function toast(msg, isError = false) {
@@ -689,8 +729,8 @@ function renderStats() {
   const overBudget = s.budget_total > 0 && s.expected > s.budget_total;
   const items = [
     {lbl: '预算合计', num: s.invited_total},
-    {lbl: '预计出席', num: s.expected, over: overBudget},
-    {lbl: '已确认到场', num: s.confirmed},
+    {lbl: '预计到场', num: s.expected, over: overBudget},
+    {lbl: '确认到场人数', num: s.confirmed},
     {lbl: '待确认', num: s.pending},
     {lbl: '不参加', num: s.declined},
     {lbl: '已安排桌位', num: s.seated},
@@ -888,7 +928,7 @@ function renderFloor() {
     '<div class="empty-note">没有未安排的宾客 🎉</div>';
   document.getElementById('unassigned-count').textContent = `（${state.stats.unseated} 人）`;
   document.getElementById('floor-summary').textContent =
-    `共 ${state.guests.length} 组宾客 · ${state.stats.expected} 人预计出席 · ${state.tables.length} 桌`;
+    `共 ${state.guests.length} 组宾客 · ${state.stats.expected} 人预计到场 · ${state.tables.length} 桌`;
 
   bindFloorInteractions(venue, scale);
 }
@@ -1050,8 +1090,7 @@ const selectedIds = new Set();
 
 function toggleSelectAll(checked) {
   const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
-  const visible = state.guests.filter(g => !kw || [g.name, g.family_names, g.note, g.table_no]
-    .some(v => String(v).toLowerCase().includes(kw)));
+  const visible = state.guests.filter(g => guestMatchesSearch(g, kw));
   selectedIds.clear();
   if (checked) visible.forEach(g => selectedIds.add(g.id));
   renderGuestsTable();
@@ -1089,7 +1128,7 @@ function renderGuestsTable() {
   const kw = (document.getElementById('guest-search').value || '').trim().toLowerCase();
   const filter = document.getElementById('guest-filter')?.value || '';
   let list = state.guests.filter(g => {
-    if (kw && ![g.name, g.family_names, g.note, g.table_no].some(v => String(v).toLowerCase().includes(kw))) return false;
+    if (!guestMatchesSearch(g, kw)) return false;
     if (filter === 'unseated') return !g.table_no;
     if (filter === 'seated') return !!g.table_no;
     if (filter === '已确认' || filter === '待确认' || filter === '不参加') return g.confirm_status === filter;
@@ -1120,15 +1159,15 @@ function renderGuestsTable() {
         <td><input type="checkbox" ${selectedIds.has(g.id) ? 'checked' : ''} onchange="toggleSelect(${g.id})"></td>
         <td><b>${esc(g.name)}</b></td>
         <td>${g.party_size}</td>
+        <td>${esc(g.note)}</td>
+        <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
         <td>${g.confirm_status === '已确认'
               ? `<b style="color:var(--ok)">${g.confirmed_size}</b>`
               : `<span style="color:var(--muted)">${g.confirmed_size}</span>`}</td>
-        <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
         <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
         <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
         <td>${inlineSelect(g, 'wechat_sent', ['未发送', '已发送'])}</td>
         <td>${inlineSelect(g, 'confirm_status', ['待确认', '已确认', '不参加'])}</td>
-        <td>${esc(g.note)}</td>
         <td><div class="ops">
           <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
           <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
