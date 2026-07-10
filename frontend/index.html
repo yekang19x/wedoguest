@@ -233,18 +233,36 @@
   .table-dot:hover .orbit-tag { opacity: 1; }
   .table-dot.dragging { opacity: .8; cursor: grabbing; z-index: 5; box-shadow: var(--shadow-lg); }
   .table-dot.dragover { border-color: var(--gold); border-style: dashed; background: radial-gradient(circle, #fdf8ef, #faf3e5); }
-  .table-dot.empty { border-style: dashed; border-color: var(--line); }
-  .table-dot.overfull { border-color: var(--danger); }
+  .table-dot.has-seats {
+    background: radial-gradient(circle at 38% 28%, #ffffff 0%, #faf4ee 70%, #f0e6dc 100%);
+    border-color: var(--primary);
+  }
+  .table-dot.full {
+    background: radial-gradient(circle at 38% 28%, #fffcf5 0%, #f5eddf 70%, #efe3d0 100%);
+    border-color: var(--gold);
+  }
+  .table-dot.overfull {
+    background: radial-gradient(circle at 38% 28%, #fff8f7 0%, #fae8e5 70%, #f5d8d3 100%);
+    border-color: var(--danger);
+  }
+  .table-dot.empty {
+    background: radial-gradient(circle at 38% 28%, #fdfdfd 0%, #f6f4f3 70%, #eeeae8 100%);
+    border-style: dashed; border-color: var(--line);
+  }
   .table-dot .tno {
-    font-weight: 700; color: var(--primary-dark);
-    font-family: var(--font-display);
+    font-weight: 400; color: var(--primary-dark);
+    font-family: var(--font-display); line-height: 1; margin-top: -0.15em;
   }
-  .table-dot.overfull .tocc { color: var(--danger); font-weight: 700; }
-  .table-dot .tocc { color: var(--muted); font-size: 0.85em; }
+  .table-dot .tocc { font-size: 0.7em; line-height: 1; color: var(--muted); }
   .table-dot .tlbl {
-    font-size: .72em; color: var(--muted); max-width: 88%;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 1em; color: var(--primary-dark); font-weight: 700; max-width: 90%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.15;
   }
+  .table-dot.has-seats .tocc { color: var(--primary); }
+  .table-dot.full .tocc { color: var(--gold); font-weight: 600; }
+  .table-dot.overfull .tocc { color: var(--danger); font-weight: 700; }
+  .table-dot.empty .tocc { opacity: .6; }
+  .table-dot.empty .tno, .table-dot.empty .tlbl { opacity: .5; }
   #side-panel {
     flex: 382; min-width: 0;
     display: flex; flex-direction: column; gap: 14px;
@@ -904,8 +922,10 @@ function renderFloor() {
   const dots = state.tables.map(t => {
     const p = tablePos(t, autoPos);
     const cls = ['table-dot'];
-    if (t.occupied > t.effective_capacity) cls.push('overfull');
     if (!t.guests.length) cls.push('empty');
+    else if (t.occupied > t.effective_capacity) cls.push('overfull');
+    else if (t.occupied === t.effective_capacity) cls.push('full');
+    else cls.push('has-seats');
     const title = `${t.table_no}${t.label ? '｜' + t.label : ''}｜${t.occupied}/${t.effective_capacity}人` +
       (t.guests.length ? `｜${t.guests.map(g => g.name).join('、')}` : '｜空桌') +
       (t.x == null ? '｜（自动摆放，拖动后保存位置）' : '');
@@ -921,8 +941,8 @@ function renderFloor() {
         data-x="${p.x}" data-y="${p.y}"
         style="left:${px(p.x - d / 2)}px; top:${px(p.y - d / 2)}px;
                width:${px(d)}px; height:${px(d)}px; font-size:${fontBase}px">
-        <span class="tno" style="font-size:${fontBase * 1.15}px">${esc(t.table_no)}</span>
-        ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
+        <span class="tno" style="font-size:${fontBase}px">${esc(t.table_no)}</span>
+        ${t.label ? `<span class="tlbl" style="font-size:${fontBase}px">${esc(t.label)}</span>` : ''}
         <span class="tocc">${t.occupied}/${t.effective_capacity}</span>
         ${orbitHtml}
       </div>`;
