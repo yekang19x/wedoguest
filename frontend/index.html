@@ -263,7 +263,17 @@
   }
   .side-section .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
   #distribution-list {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    display: flex; gap: 10px;
+  }
+  .dist-column {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .dist-column-header {
+    font-size: 11px; color: var(--muted); font-weight: 600;
+    text-align: center; padding: 4px 0;
+    border-bottom: 1px solid var(--line-light);
+    letter-spacing: 0.5px;
   }
   .dist-table {
     background: var(--card); border: 1px solid var(--line-light);
@@ -718,10 +728,39 @@ function renderAll() {
   renderSettings();
 }
 
-// 占座人数：已确认按确认人数，待确认按预计人数，不参加不占座（与后端口径一致）
+function isDeclined(g) { return g.confirm_status === '不参加'; }
+
+function compareTableNo(a, b) {
+  return tableNoOrder(a.table_no) - tableNoOrder(b.table_no) || a.table_no.localeCompare(b.table_no, 'zh');
+}
+
+function tablePos(t, autoPos) {
+  return (t.x != null && t.y != null) ? t : autoPos[t.table_no];
+}
+
 function seatSize(g) {
-  if (g.confirm_status === '不参加') return 0;
+  if (isDeclined(g)) return 0;
   return g.confirm_status === '已确认' ? g.confirmed_size : g.party_size;
+}
+
+function distTableHtml(t) {
+  const over = t.occupied > t.effective_capacity;
+  const full = !over && t.occupied === t.effective_capacity;
+  const occCls = over ? ' over' : full ? ' full' : '';
+  const guestsHtml = t.guests.length
+    ? t.guests.map(g => {
+        const cls = isDeclined(g) ? ' declined' : '';
+        return `<span class="dist-guest${cls}"><span class="name">${esc(g.name)}</span><span class="sz"> ${seatSize(g)}人</span></span>`;
+      }).join('')
+    : '<span class="dist-empty">空桌</span>';
+  return `<div class="dist-table">
+    <div class="dist-header">
+      <span class="tno">${esc(t.table_no)}</span>
+      ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
+      <span class="occ${occCls}">${t.occupied}/${t.effective_capacity}</span>
+    </div>
+    <div class="dist-guests">${guestsHtml}</div>
+  </div>`;
 }
 
 function renderStats() {
@@ -746,7 +785,7 @@ function renderStats() {
 
 function chipHtml(g) {
   const cls = ['chip'];
-  if (g.confirm_status === '不参加') cls.push('declined');
+  if (isDeclined(g)) cls.push('declined');
   if (g.confirm_status === '待确认') cls.push('pending-status');
   const title = `${g.name}｜预算${g.party_size}人/确认${g.confirmed_size}人` +
     (g.family_names ? `｜家属：${g.family_names}` : '') +
@@ -818,9 +857,7 @@ function autoLayout(tables, cfg) {
       placed.push([s.x, s.y]);
     }
   }
-  const queue = pending.filter(t => !pos[t.table_no]).sort((a, b) =>
-    tableNoOrder(a.table_no) - tableNoOrder(b.table_no) ||
-    a.table_no.localeCompare(b.table_no, 'zh'));
+  const queue = pending.filter(t => !pos[t.table_no]).sort(compareTableNo);
   for (const t of queue) {
     let found = null;
     for (const slot of slots) {
@@ -865,16 +902,15 @@ function renderFloor() {
   const fontBase = Math.max(9, Math.min(15, px(d) * 0.17));
 
   const dots = state.tables.map(t => {
-    const p = (t.x != null && t.y != null) ? { x: t.x, y: t.y } : autoPos[t.table_no];
-    const over = t.occupied > t.effective_capacity;
+    const p = tablePos(t, autoPos);
     const cls = ['table-dot'];
-    if (over) cls.push('overfull');
+    if (t.occupied > t.effective_capacity) cls.push('overfull');
     if (!t.guests.length) cls.push('empty');
     const title = `${t.table_no}${t.label ? '｜' + t.label : ''}｜${t.occupied}/${t.effective_capacity}人` +
       (t.guests.length ? `｜${t.guests.map(g => g.name).join('、')}` : '｜空桌') +
       (t.x == null ? '｜（自动摆放，拖动后保存位置）' : '');
     const orbitR = px(d) / 2 + Math.max(18, px(d) * 0.25);
-    const guests = t.guests.filter(g => g.confirm_status !== '不参加');
+    const guests = t.guests.filter(g => !isDeclined(g));
     const orbitHtml = guests.length ? `<div class="table-orbit">${guests.map((g, i) => {
       const angle = -Math.PI / 2 + (2 * Math.PI * i) / guests.length;
       const cx = px(d) / 2 + orbitR * Math.cos(angle);
@@ -899,29 +935,22 @@ function renderFloor() {
          width:${px(aisle.w)}px; height:${px(aisle.h)}px"><span>通 道</span></div>
     ${dots}`;
 
-  // 宾客分布明细
+  // 宾客分布明细 — 按桌位图中线分左右两栏
   const distList = document.getElementById('distribution-list');
-  const sortedTables = [...state.tables].sort((a, b) =>
-    tableNoOrder(a.table_no) - tableNoOrder(b.table_no) || a.table_no.localeCompare(b.table_no, 'zh'));
-  distList.innerHTML = sortedTables.map(t => {
-    const over = t.occupied > t.effective_capacity;
-    const full = !over && t.occupied === t.effective_capacity;
-    const occCls = over ? ' over' : full ? ' full' : '';
-    const guestsHtml = t.guests.length
-      ? t.guests.map(g => {
-          const cls = g.confirm_status === '不参加' ? ' declined' : '';
-          return `<span class="dist-guest${cls}"><span class="name">${esc(g.name)}</span><span class="sz"> ${seatSize(g)}人</span></span>`;
-        }).join('')
-      : '<span class="dist-empty">空桌</span>';
-    return `<div class="dist-table">
-      <div class="dist-header">
-        <span class="tno">${esc(t.table_no)}</span>
-        ${t.label ? `<span class="tlbl">${esc(t.label)}</span>` : ''}
-        <span class="occ${occCls}">${t.occupied}/${t.effective_capacity}</span>
-      </div>
-      <div class="dist-guests">${guestsHtml}</div>
-    </div>`;
-  }).join('') || '<div class="empty-note">暂无桌子</div>';
+  const centerX = cfg.venue_width / 2;
+  const sortedTables = [...state.tables].sort(compareTableNo);
+  const leftTables = [], rightTables = [];
+  for (const t of sortedTables) {
+    const p = tablePos(t, autoPos);
+    (p && p.x < centerX ? leftTables : rightTables).push(t);
+  }
+  const distCol = (label, tables) => `<div class="dist-column">
+    <div class="dist-column-header">${label}（${tables.length} 桌）</div>
+    ${tables.map(distTableHtml).join('') || '<div class="dist-empty">暂无桌子</div>'}
+  </div>`;
+  distList.innerHTML = sortedTables.length
+    ? distCol('← 左区', leftTables) + distCol('右区 →', rightTables)
+    : '<div class="empty-note">暂无桌子</div>';
 
   const chipsBox = document.getElementById('unassigned-chips');
   chipsBox.innerHTML = state.unassigned_guests.map(chipHtml).join('') ||
