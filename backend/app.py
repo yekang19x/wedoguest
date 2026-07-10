@@ -376,7 +376,7 @@ async def import_guests(request: Request, mode: str = "append"):
         invite_status = invite_raw if invite_raw in INVITE_STATUSES else "未发送"
 
         category = _norm_cell(cell(row, "分类")) or _norm_cell(cell(row, "备注"))
-        family = _norm_cell(cell(row, "家庭")) or f"{name}一家"
+        family = _norm_cell(cell(row, "家庭")) or "-"
 
         guests.append({
             "id": next_id,
