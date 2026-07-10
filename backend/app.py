@@ -52,6 +52,9 @@ class TableIn(BaseModel):
 
 class BatchUpdateIn(BaseModel):
     ids: list[int] = Field(min_length=1)
+    name: str | None = None
+    party_size: int | None = Field(default=None, ge=1)
+    confirmed_size: int | None = Field(default=None, ge=0)
     table_no: str | None = None
     invite_status: str | None = None
     category: str | None = None
@@ -224,6 +227,14 @@ def batch_update_guests(body: BatchUpdateIn):
     for g in guests:
         if g["id"] not in id_set:
             continue
+        if body.name is not None:
+            g["name"] = body.name.strip()
+        if body.party_size is not None:
+            g["party_size"] = body.party_size
+            if g["confirmed_size"] > body.party_size:
+                g["confirmed_size"] = body.party_size
+        if body.confirmed_size is not None:
+            g["confirmed_size"] = min(body.confirmed_size, g["party_size"])
         if body.table_no is not None:
             g["table_no"] = body.table_no
         if body.invite_status is not None:
@@ -400,6 +411,101 @@ async def import_guests(request: Request, mode: str = "append"):
     storage.save_guests(guests)
     return {"imported": imported, "skipped": skipped,
             "created_tables": unknown_tables, "mode": mode}
+
+
+# ---------- 桌子导入导出 ----------
+
+@app.get("/api/tables/export")
+def export_tables():
+    tables = storage.load_tables()
+    headers = ["桌号", "桌名"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "桌位列表"
+    ws.append(headers)
+    for t in tables:
+        ws.append([t["table_no"], t.get("label", "")])
+
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    hdr_fill = PatternFill(start_color="A2687B", end_color="A2687B", fill_type="solid")
+    hdr_align = Alignment(horizontal="center", vertical="center")
+    for cell in ws[1]:
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = hdr_align
+
+    row_border = Border(bottom=Side(style="thin", color="D3BFB0"))
+    row_align = Alignment(vertical="center")
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = row_align
+            cell.border = row_border
+
+    for col_idx in range(1, len(headers) + 1):
+        max_len = 0
+        for row_idx in range(1, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=col_idx).value
+            if val is not None:
+                max_len = max(max_len, sum(2 if ord(c) > 127 else 1 for c in str(val)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 4, 8), 40)
+
+    ws.freeze_panes = "A2"
+    buf = BytesIO()
+    wb.save(buf)
+    return Response(buf.getvalue(), media_type=EXPORT_MIME, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote('桌位列表.xlsx')}",
+    })
+
+
+@app.post("/api/tables/import")
+async def import_tables(request: Request):
+    """导入桌名。body 为 xlsx 原始字节；按桌号匹配更新桌名。"""
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "请上传 xlsx 文件")
+    try:
+        ws = load_workbook(BytesIO(data), data_only=True).active
+    except Exception:
+        raise HTTPException(400, "无法解析文件，请上传 .xlsx 格式的 Excel 文件")
+
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None) or ()
+    col = {}
+    for i, h in enumerate(header):
+        hname = str(h or "").strip()
+        if hname:
+            col[hname] = i
+    if "桌号" not in col:
+        raise HTTPException(400, "缺少「桌号」列（表头需含：桌号、桌名）")
+
+    tables = storage.load_tables()
+    table_map = {t["table_no"]: t for t in tables}
+    updated, created = 0, 0
+
+    for row in rows:
+        if row is None or all(v is None or str(v).strip() == "" for v in row):
+            continue
+        idx = col["桌号"]
+        table_no = str(row[idx]).strip() if idx < len(row) and row[idx] is not None else ""
+        if not table_no:
+            continue
+
+        label_idx = col.get("桌名")
+        label = str(row[label_idx]).strip() if label_idx is not None and label_idx < len(row) and row[label_idx] is not None else ""
+
+        if table_no in table_map:
+            table_map[table_no]["label"] = label
+            updated += 1
+        else:
+            tables.append({"table_no": table_no, "label": label, "capacity": None, "x": None, "y": None})
+            table_map[table_no] = tables[-1]
+            created += 1
+
+    if updated == 0 and created == 0:
+        raise HTTPException(400, "文件里没有可导入的数据行")
+    storage.save_tables(tables)
+    return {"updated": updated, "created": created}
 
 
 # ---------- 桌子 ----------

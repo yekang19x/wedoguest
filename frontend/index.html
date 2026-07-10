@@ -396,6 +396,17 @@
     padding: 4px 8px; font-size: 12px; border-radius: 6px;
     background: var(--card); border: 1px solid var(--line);
   }
+  table.list td.editable { cursor: pointer; }
+  table.list td.editable:hover { background: var(--line-light); border-radius: 4px; }
+  table.list td.editing { padding: 4px 6px; }
+  table.list td.editing input,
+  table.list td.editing select {
+    width: 100%; padding: 4px 6px; font-size: 13px; border-radius: 4px;
+    background: var(--card); border: 1px solid var(--primary-light);
+    outline: none; box-sizing: border-box; margin: 0;
+  }
+  table.list td.editing input:focus,
+  table.list td.editing select:focus { border-color: var(--primary); }
   .tag {
     display: inline-block; padding: 3px 10px; border-radius: 20px;
     font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
@@ -589,6 +600,8 @@
   <div class="tab-page" id="tab-tables">
     <div class="toolbar">
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
+      <a class="btn io" href="/api/tables/export">⬇ 导出桌位</a>
+      <button class="btn io" onclick="openTableImportModal()">⬆ 导入桌名</button>
       <span class="hint">容量留空表示使用全局默认容量</span>
     </div>
     <table class="list" id="tables-table">
@@ -1179,17 +1192,16 @@ function renderGuestsTable() {
   const rows = list.map(g => `
       <tr>
         <td><input type="checkbox" ${selectedIds.has(g.id) ? 'checked' : ''} onchange="toggleSelect(${g.id})"></td>
-        <td><b>${esc(g.name)}</b></td>
-        <td>${g.party_size}</td>
-        <td>${isConfirmed(g)
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'name','text')"><b>${esc(g.name)}</b></td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'party_size','number')">${g.party_size}</td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'confirmed_size','number')">${isConfirmed(g)
               ? `<b style="color:var(--ok)">${g.confirmed_size}</b>`
               : `<span style="color:var(--muted)">${g.confirmed_size}</span>`}</td>
-        <td>${esc(g.family) || '<span style="color:var(--muted)">—</span>'}</td>
-        <td>${esc(g.category) || '<span style="color:var(--muted)">—</span>'}</td>
-        <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
-        <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'family','text')">${esc(g.family) || '<span style="color:var(--muted)">—</span>'}</td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'category','text')">${esc(g.category) || '<span style="color:var(--muted)">—</span>'}</td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'table_no','select')">${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
+        <td class="editable" ondblclick="inlineEdit(this,${g.id},'invite_status','select')">${g.invite_status === '已发送' ? '<span style="color:var(--ok)">已发送</span>' : '<span style="color:var(--muted)">未发送</span>'}</td>
         <td><div class="ops">
-          <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
           <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
           <button class="btn sm danger" onclick="removeGuest(${g.id})">删除</button>
         </div></td>
@@ -1409,6 +1421,47 @@ async function batchDelete() {
   } catch (e) { toast(e.message, true); await reload(); }
 }
 
+function inlineEdit(td, gid, field, type) {
+  if (td.classList.contains('editing')) return;
+  const g = guestById(gid);
+  const oldVal = g[field] ?? '';
+  td.style.width = td.offsetWidth + 'px';
+  td.classList.add('editing');
+  let input;
+
+  if (type === 'select' && field === 'table_no') {
+    td.innerHTML = `<select>${tableOptions(g.table_no)}</select>`;
+    input = td.querySelector('select');
+  } else if (type === 'select' && field === 'invite_status') {
+    td.innerHTML = `<select>
+      <option${g.invite_status === '未发送' ? ' selected' : ''}>未发送</option>
+      <option${g.invite_status === '已发送' ? ' selected' : ''}>已发送</option>
+    </select>`;
+    input = td.querySelector('select');
+  } else {
+    const attrs = type === 'number' ? 'type="number" min="0"' : 'type="text"';
+    td.innerHTML = `<input ${attrs} value="${esc(String(oldVal))}">`;
+    input = td.querySelector('input');
+    input.select();
+  }
+  input.focus();
+
+  const commit = async () => {
+    let val = input.value.trim();
+    if (type === 'number') val = parseInt(val, 10) || 0;
+    if (val === oldVal || (type === 'number' && val === Number(oldVal))) {
+      renderGuestsTable();
+      return;
+    }
+    await quickUpdate(gid, field, val);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', commit); renderGuestsTable(); }
+  });
+}
+
 async function quickUpdate(gid, field, value) {
   try {
     await api('PATCH', '/api/guests/batch', { ids: [gid], [field]: value });
@@ -1469,6 +1522,41 @@ async function submitImport() {
     toast(`已导入 ${r.imported} 组宾客` +
       (r.skipped ? `，跳过 ${r.skipped} 行（姓名为空）` : '') +
       (r.created_tables.length ? `，自动新建桌：${r.created_tables.join('、')}` : ''));
+  } catch (e) { toast('导入失败：' + e.message, true); }
+}
+
+/* ---- 桌名导入 ---- */
+function openTableImportModal() {
+  showModal(`
+    <h3>导入桌名（Excel）</h3>
+    <div class="form-row"><label>选择 .xlsx 文件</label>
+      <input type="file" id="tim-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    </div>
+    <div style="font-size:12px; color:var(--muted); line-height:1.7; margin-top:10px">
+      表头格式：<b>桌号｜桌名</b><br>
+      · 按桌号匹配更新桌名；桌号不存在则自动新建<br>
+      · 建议先点「导出桌位」获得当前数据
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+      <button class="btn" onclick="submitTableImport()">开始导入</button>
+    </div>`);
+}
+
+async function submitTableImport() {
+  const file = document.getElementById('tim-file').files[0];
+  if (!file) { toast('请先选择 .xlsx 文件', true); return; }
+  try {
+    const res = await fetch('/api/tables/import', { method: 'POST', body: file });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { detail = (await res.json()).detail || detail; } catch (e) {}
+      throw new Error(detail);
+    }
+    const r = await res.json();
+    closeModal();
+    await reload();
+    toast(`已更新 ${r.updated} 个桌名` + (r.created ? `，新建 ${r.created} 个桌` : ''));
   } catch (e) { toast('导入失败：' + e.message, true); }
 }
 
