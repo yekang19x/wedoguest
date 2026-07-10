@@ -643,6 +643,18 @@
           <label>桌子间距（米）</label>
           <input type="number" id="cfg-table-gap" min="0" step="0.1">
         </div>
+        <div class="form-row">
+          <label>桌到墙壁（米）</label>
+          <input type="number" id="cfg-margin-wall" min="0" step="0.1">
+        </div>
+        <div class="form-row">
+          <label>桌到舞台（米）</label>
+          <input type="number" id="cfg-margin-stage" min="0" step="0.1">
+        </div>
+        <div class="form-row">
+          <label>桌到过道（米）</label>
+          <input type="number" id="cfg-margin-aisle" min="0" step="0.1">
+        </div>
       </div>
       <span class="desc" style="display:block;margin-bottom:14px">平面图按以上尺寸等比例绘制，圆桌大小随桌径实时缩放。</span>
       <button class="btn" onclick="saveConfig()">保存设置</button>
@@ -844,23 +856,29 @@ function tableNoOrder(no) {
 // 每行先排左区 L→R，再排右区 L→R（与左区镜像对称）
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
+  const mWall = cfg.margin_wall ?? 0.6;
+  const mStage = cfg.margin_stage ?? 0.6;
+  const mAisle = cfg.margin_aisle ?? 0.3;
   const stage = stageRect(cfg), aisle = aisleRect(cfg);
-  const margin = rad + 0.6, step = D + cfg.table_gap;
+  const wallMargin = rad + mWall;
+  const step = D + cfg.table_gap;
   const minDist = Math.min(D + 0.25, step * 0.99);
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
-  const firstRowY = stage.h + rad + 0.6;
+  const firstRowY = stage.h + rad + mStage;
+  const aisleExpanded = { x: aisle.x - mAisle, y: aisle.y, w: aisle.w + mAisle * 2, h: aisle.h };
+  const stageExpanded = { x: stage.x - mStage, y: stage.y, w: stage.w + mStage * 2, h: stage.h + mStage };
   const slots = [];
-  for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
+  for (let y = firstRowY; y <= cfg.venue_depth - wallMargin; y += step) {
     const leftXs = [];
-    for (let x = margin; x <= cfg.venue_width - margin; x += step) {
-      if (x < aisle.x && !circleHitsRect(stage, x, y, rad) && !circleHitsRect(aisle, x, y, rad))
+    for (let x = wallMargin; x <= cfg.venue_width - wallMargin; x += step) {
+      if (x < aisleExpanded.x && !circleHitsRect(stageExpanded, x, y, rad) && !circleHitsRect(aisleExpanded, x, y, rad))
         leftXs.push(x);
     }
     for (const x of leftXs) slots.push({ x, y });
     const rightXs = leftXs.map(x => cfg.venue_width - x)
-      .filter(x => x <= cfg.venue_width - margin
-        && !circleHitsRect(stage, x, y, rad) && !circleHitsRect(aisle, x, y, rad))
+      .filter(x => x <= cfg.venue_width - wallMargin
+        && !circleHitsRect(stageExpanded, x, y, rad) && !circleHitsRect(aisleExpanded, x, y, rad))
       .sort((a, b) => a - b);
     for (const x of rightXs) slots.push({ x, y });
   }
@@ -872,7 +890,7 @@ function autoLayout(tables, cfg) {
       found = { x: slot.x, y: slot.y };
       break;
     }
-    found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - margin };
+    found = found || { x: cfg.venue_width / 2, y: cfg.venue_depth - wallMargin };
     pos[t.table_no] = found;
     placed.push([found.x, found.y]);
   }
@@ -1227,6 +1245,9 @@ function renderSettings() {
   document.getElementById('cfg-venue-depth').value = state.config.venue_depth;
   document.getElementById('cfg-table-diameter').value = state.config.table_diameter;
   document.getElementById('cfg-table-gap').value = state.config.table_gap;
+  document.getElementById('cfg-margin-wall').value = state.config.margin_wall;
+  document.getElementById('cfg-margin-stage').value = state.config.margin_stage;
+  document.getElementById('cfg-margin-aisle').value = state.config.margin_aisle;
 }
 
 function renderTitle() {
@@ -1753,6 +1774,9 @@ async function saveConfig() {
     venue_depth: parseFloat(document.getElementById('cfg-venue-depth').value),
     table_diameter: parseFloat(document.getElementById('cfg-table-diameter').value),
     table_gap: parseFloat(document.getElementById('cfg-table-gap').value),
+    margin_wall: parseFloat(document.getElementById('cfg-margin-wall').value),
+    margin_stage: parseFloat(document.getElementById('cfg-margin-stage').value),
+    margin_aisle: parseFloat(document.getElementById('cfg-margin-aisle').value),
   };
   if (!body.default_capacity || body.default_capacity < 1) { toast('默认容量至少为 1', true); return; }
   if (isNaN(body.budget_total) || body.budget_total < 0) { toast('人数预算不能为负', true); return; }

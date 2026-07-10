@@ -29,6 +29,9 @@ DEFAULT_CONFIG = {
     "venue_depth": 25.0,      # 会场长度（米，纵向）
     "table_diameter": 1.8,    # 桌子直径（米）
     "table_gap": 0.8,         # 自动排列时相邻桌子的边缘间距（米）
+    "margin_wall": 0.6,       # 桌边缘到场地边界（米）
+    "margin_stage": 0.6,      # 桌边缘到舞台前沿（米）
+    "margin_aisle": 0.3,      # 桌边缘到过道（米）
     "wedding_date": "10.25",  # 婚礼日期（显示在标题）
 }
 CONFIG_INT_KEYS = {"default_capacity", "budget_total"}
