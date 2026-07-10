@@ -15,6 +15,17 @@
 ./local-down.ps1
 ```
 
+## Docker 部署
+
+```bash
+docker compose up -d          # 构建并启动
+docker compose down            # 停止
+
+PORT=9000 docker compose up -d # 自定义端口
+```
+
+数据持久化在 `data/` 目录，作为 volume 挂载。
+
 ## 功能
 
 | 页签 | 说明 |
