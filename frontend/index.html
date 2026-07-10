@@ -392,10 +392,6 @@
   table.list tbody tr { transition: background var(--transition); }
   table.list tbody tr:hover { background: rgba(184,145,138,.03); }
   table.list td .ops { display: flex; gap: 6px; }
-  table.list select.inline {
-    padding: 4px 8px; font-size: 12px; border-radius: 6px;
-    background: var(--card); border: 1px solid var(--line);
-  }
   table.list td.editable { cursor: pointer; }
   table.list td.editable:hover { background: var(--line-light); border-radius: 4px; }
   table.list td.editing { padding: 4px 6px; }
@@ -1116,12 +1112,6 @@ async function saveTableInline(origNo) {
   } catch (e) { toast(e.message, true); }
 }
 
-function inlineSelect(g, field, options) {
-  return `<select class="inline" onchange="quickUpdate(${g.id}, '${field}', this.value)">` +
-    options.map(o => `<option${o === g[field] ? ' selected' : ''}>${o}</option>`).join('') +
-    '</select>';
-}
-
 const selectedIds = new Set();
 
 function toggleSelectAll(checked) {
@@ -1503,14 +1493,11 @@ function openImportModal() {
     </div>`);
 }
 
-async function submitImport() {
-  const file = document.getElementById('im-file').files[0];
+async function uploadXlsx(fileInputId, url, toastFn) {
+  const file = document.getElementById(fileInputId).files[0];
   if (!file) { toast('请先选择 .xlsx 文件', true); return; }
-  const mode = document.querySelector('input[name="im-mode"]:checked').value;
-  if (mode === 'replace' &&
-      !confirm(`覆盖模式将删除现有全部 ${state.guests.length} 组宾客，再导入新名单。\n确定继续？`)) return;
   try {
-    const res = await fetch(`/api/guests/import?mode=${mode}`, { method: 'POST', body: file });
+    const res = await fetch(url, { method: 'POST', body: file });
     if (!res.ok) {
       let detail = res.statusText;
       try { detail = (await res.json()).detail || detail; } catch (e) {}
@@ -1519,10 +1506,18 @@ async function submitImport() {
     const r = await res.json();
     closeModal();
     await reload();
-    toast(`已导入 ${r.imported} 组宾客` +
-      (r.skipped ? `，跳过 ${r.skipped} 行（姓名为空）` : '') +
-      (r.created_tables.length ? `，自动新建桌：${r.created_tables.join('、')}` : ''));
+    toast(toastFn(r));
   } catch (e) { toast('导入失败：' + e.message, true); }
+}
+
+async function submitImport() {
+  const mode = document.querySelector('input[name="im-mode"]:checked').value;
+  if (mode === 'replace' &&
+      !confirm(`覆盖模式将删除现有全部 ${state.guests.length} 组宾客，再导入新名单。\n确定继续？`)) return;
+  await uploadXlsx('im-file', `/api/guests/import?mode=${mode}`, r =>
+    `已导入 ${r.imported} 组宾客` +
+    (r.skipped ? `，跳过 ${r.skipped} 行（姓名为空）` : '') +
+    (r.created_tables.length ? `，自动新建桌：${r.created_tables.join('、')}` : ''));
 }
 
 /* ---- 桌名导入 ---- */
@@ -1544,20 +1539,8 @@ function openTableImportModal() {
 }
 
 async function submitTableImport() {
-  const file = document.getElementById('tim-file').files[0];
-  if (!file) { toast('请先选择 .xlsx 文件', true); return; }
-  try {
-    const res = await fetch('/api/tables/import', { method: 'POST', body: file });
-    if (!res.ok) {
-      let detail = res.statusText;
-      try { detail = (await res.json()).detail || detail; } catch (e) {}
-      throw new Error(detail);
-    }
-    const r = await res.json();
-    closeModal();
-    await reload();
-    toast(`已更新 ${r.updated} 个桌名` + (r.created ? `，新建 ${r.created} 个桌` : ''));
-  } catch (e) { toast('导入失败：' + e.message, true); }
+  await uploadXlsx('tim-file', '/api/tables/import', r =>
+    `已更新 ${r.updated} 个桌名` + (r.created ? `，新建 ${r.created} 个桌` : ''));
 }
 
 /* ---- 换桌 ---- */

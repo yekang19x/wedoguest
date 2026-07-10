@@ -268,6 +268,61 @@ def move_guest(gid: int, body: MoveIn):
 EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def _style_xlsx(ws):
+    """给 worksheet 加统一样式：表头、行边框、列宽自适应、冻结首行。"""
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    hdr_fill = PatternFill(start_color="A2687B", end_color="A2687B", fill_type="solid")
+    hdr_align = Alignment(horizontal="center", vertical="center")
+    for cell in ws[1]:
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = hdr_align
+    row_border = Border(bottom=Side(style="thin", color="D3BFB0"))
+    row_align = Alignment(vertical="center")
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row:
+            cell.alignment = row_align
+            cell.border = row_border
+    for col_idx in range(1, ws.max_column + 1):
+        max_len = 0
+        for row_idx in range(1, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=col_idx).value
+            if val is not None:
+                max_len = max(max_len, sum(2 if ord(c) > 127 else 1 for c in str(val)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 4, 8), 40)
+    ws.freeze_panes = "A2"
+
+
+def _export_xlsx(ws, filename: str) -> Response:
+    _style_xlsx(ws)
+    buf = BytesIO()
+    ws.parent.save(buf)
+    return Response(buf.getvalue(), media_type=EXPORT_MIME, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+    })
+
+
+async def _parse_xlsx(request: Request, required_col: str) -> tuple:
+    """解析上传的 xlsx，返回 (worksheet_rows_iterator, column_map)。"""
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "请上传 xlsx 文件")
+    try:
+        ws = load_workbook(BytesIO(data), data_only=True).active
+    except Exception:
+        raise HTTPException(400, "无法解析文件，请上传 .xlsx 格式的 Excel 文件")
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None) or ()
+    col = {}
+    for i, h in enumerate(header):
+        hname = str(h or "").strip()
+        if hname:
+            col[hname] = i
+    if required_col not in col:
+        raise HTTPException(400, f"缺少「{required_col}」列")
+    return rows, col
+
+
 def _norm_cell(v) -> str:
     if v is None:
         return ""
@@ -287,49 +342,15 @@ def _cell_int(v) -> int | None:
 @app.get("/api/guests/export")
 def export_guests():
     guests = storage.load_guests()
-    headers = ["姓名", "预计人数", "确认人数", "桌号", "请帖", "分类", "家庭"]
-
     wb = Workbook()
     ws = wb.active
     ws.title = "宾客名单"
-    ws.append(headers)
+    ws.append(["姓名", "预计人数", "确认人数", "桌号", "请帖", "分类", "家庭"])
     for g in guests:
         ws.append([g["name"], g["party_size"], g["confirmed_size"],
                    g["table_no"], g["invite_status"],
                    g.get("category", ""), g.get("family", "")])
-
-    # 表头样式
-    hdr_font = Font(bold=True, color="FFFFFF", size=11)
-    hdr_fill = PatternFill(start_color="A2687B", end_color="A2687B", fill_type="solid")
-    hdr_align = Alignment(horizontal="center", vertical="center")
-    for cell in ws[1]:
-        cell.font = hdr_font
-        cell.fill = hdr_fill
-        cell.alignment = hdr_align
-
-    # 数据行样式
-    row_border = Border(bottom=Side(style="thin", color="D3BFB0"))
-    row_align = Alignment(vertical="center")
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
-            cell.alignment = row_align
-            cell.border = row_border
-
-    # 列宽自适应
-    for col_idx in range(1, len(headers) + 1):
-        max_len = 0
-        for row_idx in range(1, ws.max_row + 1):
-            val = ws.cell(row=row_idx, column=col_idx).value
-            if val is not None:
-                max_len = max(max_len, sum(2 if ord(c) > 127 else 1 for c in str(val)))
-        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 4, 8), 40)
-
-    ws.freeze_panes = "A2"
-    buf = BytesIO()
-    wb.save(buf)
-    return Response(buf.getvalue(), media_type=EXPORT_MIME, headers={
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quote('宾客名单.xlsx')}",
-    })
+    return _export_xlsx(ws, "宾客名单.xlsx")
 
 
 @app.post("/api/guests/import")
@@ -337,23 +358,7 @@ async def import_guests(request: Request, mode: str = "append"):
     """导入宾客名单。body 为 xlsx 原始字节；mode=append 追加 / replace 覆盖全部。"""
     if mode not in ("append", "replace"):
         raise HTTPException(400, "mode 必须是 append 或 replace")
-    data = await request.body()
-    if not data:
-        raise HTTPException(400, "请上传 xlsx 文件")
-    try:
-        ws = load_workbook(BytesIO(data), data_only=True).active
-    except Exception:
-        raise HTTPException(400, "无法解析文件，请上传 .xlsx 格式的 Excel 文件")
-
-    rows = ws.iter_rows(values_only=True)
-    header = next(rows, None) or ()
-    col = {}
-    for i, h in enumerate(header):
-        hname = str(h or "").strip()
-        if hname:
-            col[hname] = i
-    if "姓名" not in col:
-        raise HTTPException(400, "缺少「姓名」列（表头需含：姓名、家属、预计人数、确认人数、桌号）")
+    rows, col = await _parse_xlsx(request, "姓名")
 
     def cell(vals, cname):
         i = col.get(cname)
@@ -418,67 +423,19 @@ async def import_guests(request: Request, mode: str = "append"):
 @app.get("/api/tables/export")
 def export_tables():
     tables = storage.load_tables()
-    headers = ["桌号", "桌名"]
-
     wb = Workbook()
     ws = wb.active
     ws.title = "桌位列表"
-    ws.append(headers)
+    ws.append(["桌号", "桌名"])
     for t in tables:
         ws.append([t["table_no"], t.get("label", "")])
-
-    hdr_font = Font(bold=True, color="FFFFFF", size=11)
-    hdr_fill = PatternFill(start_color="A2687B", end_color="A2687B", fill_type="solid")
-    hdr_align = Alignment(horizontal="center", vertical="center")
-    for cell in ws[1]:
-        cell.font = hdr_font
-        cell.fill = hdr_fill
-        cell.alignment = hdr_align
-
-    row_border = Border(bottom=Side(style="thin", color="D3BFB0"))
-    row_align = Alignment(vertical="center")
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
-            cell.alignment = row_align
-            cell.border = row_border
-
-    for col_idx in range(1, len(headers) + 1):
-        max_len = 0
-        for row_idx in range(1, ws.max_row + 1):
-            val = ws.cell(row=row_idx, column=col_idx).value
-            if val is not None:
-                max_len = max(max_len, sum(2 if ord(c) > 127 else 1 for c in str(val)))
-        ws.column_dimensions[get_column_letter(col_idx)].width = min(max(max_len + 4, 8), 40)
-
-    ws.freeze_panes = "A2"
-    buf = BytesIO()
-    wb.save(buf)
-    return Response(buf.getvalue(), media_type=EXPORT_MIME, headers={
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quote('桌位列表.xlsx')}",
-    })
+    return _export_xlsx(ws, "桌位列表.xlsx")
 
 
 @app.post("/api/tables/import")
 async def import_tables(request: Request):
     """导入桌名。body 为 xlsx 原始字节；按桌号匹配更新桌名。"""
-    data = await request.body()
-    if not data:
-        raise HTTPException(400, "请上传 xlsx 文件")
-    try:
-        ws = load_workbook(BytesIO(data), data_only=True).active
-    except Exception:
-        raise HTTPException(400, "无法解析文件，请上传 .xlsx 格式的 Excel 文件")
-
-    rows = ws.iter_rows(values_only=True)
-    header = next(rows, None) or ()
-    col = {}
-    for i, h in enumerate(header):
-        hname = str(h or "").strip()
-        if hname:
-            col[hname] = i
-    if "桌号" not in col:
-        raise HTTPException(400, "缺少「桌号」列（表头需含：桌号、桌名）")
-
+    rows, col = await _parse_xlsx(request, "桌号")
     tables = storage.load_tables()
     table_map = {t["table_no"]: t for t in tables}
     updated, created = 0, 0
