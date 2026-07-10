@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field
 import storage
 from storage import CONFIRM_STATUSES, INVITE_STATUSES, WECHAT_STATUSES
 
+GUEST_TYPES = ["宾客及家属", "宾客", "家属"]
+
 app = FastAPI(title="婚礼宾客统计系统")
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -37,6 +39,7 @@ class GuestIn(BaseModel):
     confirm_status: str = "待确认"
     wechat_sent: str = "未发送"
     note: str = ""
+    guest_type: str = "宾客及家属"
     force: bool = False  # 目标桌超容时是否强制安排
 
 
@@ -182,6 +185,17 @@ def overview():
 
 # ---------- 宾客 ----------
 
+def _validate_guest_type(guest_type: str, party_size: int):
+    if guest_type not in GUEST_TYPES:
+        raise HTTPException(400, f"宾客类型必须是 {GUEST_TYPES} 之一")
+    if guest_type == "宾客" and party_size != 1:
+        raise HTTPException(400, "「宾客」类型的人数固定为 1")
+
+
+def _next_group_id(guests: list[dict]) -> int:
+    return max((g.get("group_id") or 0 for g in guests), default=0) + 1
+
+
 def _guest_fields(body: GuestIn) -> dict:
     return {
         "name": body.name.strip(),
@@ -193,17 +207,19 @@ def _guest_fields(body: GuestIn) -> dict:
         "confirm_status": body.confirm_status,
         "wechat_sent": body.wechat_sent,
         "note": body.note.strip(),
+        "guest_type": body.guest_type,
     }
 
 
 @app.post("/api/guests")
 def create_guest(body: GuestIn):
     _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
+    _validate_guest_type(body.guest_type, body.party_size)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
     fields = _guest_fields(body)
-    guest = {"id": storage.next_guest_id(guests), **fields}
+    guest = {"id": storage.next_guest_id(guests), "group_id": None, **fields}
     _check_capacity(guests, tables, config, guest["table_no"], _seat_size(guest), force=body.force)
     guests.append(guest)
     storage.save_guests(guests)
@@ -213,6 +229,7 @@ def create_guest(body: GuestIn):
 @app.put("/api/guests/{gid}")
 def update_guest(gid: int, body: GuestIn):
     _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
+    _validate_guest_type(body.guest_type, body.party_size)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
@@ -265,16 +282,17 @@ def batch_update_guests(body: BatchUpdateIn):
 
 @app.post("/api/guests/{gid}/move")
 def move_guest(gid: int, body: MoveIn):
-    """换桌。with_family=False 且随行人数 > 1 时拆分记录：本人换桌，家属留在原桌。"""
+    """换桌。with_family=False 且「宾客及家属」类型人数 > 1 时拆分记录。"""
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
     guest = _find_guest(guests, gid)
     target = body.target_table.strip()
 
-    split = not body.with_family and guest["party_size"] > 1
+    can_split = (guest.get("guest_type", "宾客及家属") == "宾客及家属"
+                 and guest["party_size"] > 1)
+    split = not body.with_family and can_split
     if split:
-        # 本人 1 人换桌；确认人数同步拆分（本人至多占 1）
         person_confirmed = min(1, guest["confirmed_size"])
         moving = {**guest, "party_size": 1, "confirmed_size": person_confirmed}
     else:
@@ -284,27 +302,95 @@ def move_guest(gid: int, body: MoveIn):
 
     result = {"moved": None, "family_left": None}
     if split:
+        group_id = _next_group_id(guests)
         family = {
             "id": storage.next_guest_id(guests),
-            "name": f"{guest['name']}的家属",
+            "name": f"{guest['name']}家属",
             "party_size": guest["party_size"] - 1,
-            "confirmed_size": guest["confirmed_size"] - min(1, guest["confirmed_size"]),
+            "confirmed_size": guest["confirmed_size"] - person_confirmed,
             "family_names": guest["family_names"],
             "table_no": guest["table_no"],
             "invite_status": guest["invite_status"],
             "wechat_sent": guest.get("wechat_sent", "未发送"),
             "confirm_status": guest["confirm_status"],
-            "note": f"由「{guest['name']}」换桌拆分",
+            "note": "",
+            "guest_type": "家属",
+            "group_id": group_id,
         }
         guests.append(family)
-        guest.update({"party_size": 1, "confirmed_size": min(1, guest["confirmed_size"]),
-                      "family_names": "", "table_no": target})
+        guest.update({
+            "party_size": 1, "confirmed_size": person_confirmed,
+            "family_names": "", "table_no": target,
+            "guest_type": "宾客", "group_id": group_id,
+        })
         result["family_left"] = family
     else:
         guest["table_no"] = target
     result["moved"] = guest
     storage.save_guests(guests)
     return result
+
+
+@app.post("/api/guests/{gid}/split")
+def split_guest(gid: int):
+    """将「宾客及家属」拆分为「宾客」(1人) + 「家属」(N-1人)，共享 group_id。"""
+    guests = storage.load_guests()
+    guest = _find_guest(guests, gid)
+    if guest.get("guest_type", "宾客及家属") != "宾客及家属":
+        raise HTTPException(400, "只有「宾客及家属」类型可以拆分")
+    if guest["party_size"] <= 1:
+        raise HTTPException(400, "人数为 1 的宾客无法拆分")
+
+    group_id = _next_group_id(guests)
+    person_confirmed = min(1, guest["confirmed_size"])
+    family = {
+        "id": storage.next_guest_id(guests),
+        "name": f"{guest['name']}家属",
+        "party_size": guest["party_size"] - 1,
+        "confirmed_size": guest["confirmed_size"] - person_confirmed,
+        "family_names": guest["family_names"],
+        "table_no": guest["table_no"],
+        "invite_status": guest["invite_status"],
+        "wechat_sent": guest.get("wechat_sent", "未发送"),
+        "confirm_status": guest["confirm_status"],
+        "note": guest["note"],
+        "guest_type": "家属",
+        "group_id": group_id,
+    }
+    guests.append(family)
+    guest.update({
+        "party_size": 1, "confirmed_size": person_confirmed,
+        "family_names": "", "guest_type": "宾客", "group_id": group_id,
+    })
+    storage.save_guests(guests)
+    return {"guest": guest, "family": family}
+
+
+@app.post("/api/guests/{gid}/merge")
+def merge_guest(gid: int):
+    """将同 group_id 的「宾客」+「家属」合并回一条「宾客及家属」。"""
+    guests = storage.load_guests()
+    guest = _find_guest(guests, gid)
+    gid_group = guest.get("group_id")
+    if not gid_group:
+        raise HTTPException(400, "该宾客没有关联的拆分组")
+    group = [g for g in guests if g.get("group_id") == gid_group]
+    if len(group) != 2:
+        raise HTTPException(400, "拆分组数据异常，无法合并")
+    primary = next((g for g in group if g.get("guest_type") == "宾客"), None)
+    family = next((g for g in group if g.get("guest_type") == "家属"), None)
+    if not primary or not family:
+        raise HTTPException(400, "拆分组缺少宾客或家属记录")
+    primary.update({
+        "party_size": primary["party_size"] + family["party_size"],
+        "confirmed_size": primary["confirmed_size"] + family["confirmed_size"],
+        "family_names": family["family_names"],
+        "guest_type": "宾客及家属",
+        "group_id": None,
+    })
+    guests.remove(family)
+    storage.save_guests(guests)
+    return {"merged": primary}
 
 
 # ---------- 宾客名单导入 / 导出（xlsx） ----------
@@ -372,7 +458,7 @@ def _export_family(g) -> str:
 def export_guests():
     guests = storage.load_guests()
     headers = ["姓名", "家属", "预计人数", "确认人数", "桌号",
-               "邀请状态", "微信通知", "确认状态", "备注"]
+               "邀请状态", "微信通知", "确认状态", "备注", "类型"]
 
     wb = Workbook()
     ws = wb.active
@@ -381,7 +467,7 @@ def export_guests():
     for g in guests:
         ws.append([g["name"], _export_family(g), g["party_size"], g["confirmed_size"],
                    g["table_no"], g["invite_status"], g.get("wechat_sent", "未发送"),
-                   g["confirm_status"], g["note"]])
+                   g["confirm_status"], g["note"], g.get("guest_type", "宾客及家属")])
 
     # 表头样式
     hdr_font = Font(bold=True, color="FFFFFF", size=11)
@@ -483,6 +569,9 @@ async def import_guests(request: Request, mode: str = "append"):
 
         note = _norm_cell(cell(row, "备注"))
 
+        type_raw = _norm_cell(cell(row, "类型"))
+        guest_type = type_raw if type_raw in GUEST_TYPES else "宾客及家属"
+
         guests.append({
             "id": next_id,
             "name": name,
@@ -494,6 +583,8 @@ async def import_guests(request: Request, mode: str = "append"):
             "wechat_sent": wechat_sent,
             "confirm_status": confirm_status,
             "note": note,
+            "guest_type": guest_type,
+            "group_id": None,
         })
         next_id += 1
         imported += 1

@@ -47,7 +47,9 @@ CREATE TABLE IF NOT EXISTS guests (
     invite_status TEXT NOT NULL DEFAULT '未发送',
     confirm_status TEXT NOT NULL DEFAULT '待确认',
     note TEXT NOT NULL DEFAULT '',
-    wechat_sent TEXT NOT NULL DEFAULT '未发送'
+    wechat_sent TEXT NOT NULL DEFAULT '未发送',
+    guest_type TEXT NOT NULL DEFAULT '宾客及家属',
+    group_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS tables (
     table_no TEXT PRIMARY KEY,
@@ -86,6 +88,10 @@ def ensure_data_files():
         cols = {r["name"] for r in c.execute("PRAGMA table_info(guests)").fetchall()}
         if "wechat_sent" not in cols:
             c.execute("ALTER TABLE guests ADD COLUMN wechat_sent TEXT NOT NULL DEFAULT '未发送'")
+        if "guest_type" not in cols:
+            c.execute("ALTER TABLE guests ADD COLUMN guest_type TEXT NOT NULL DEFAULT '宾客及家属'")
+        if "group_id" not in cols:
+            c.execute("ALTER TABLE guests ADD COLUMN group_id INTEGER")
     # 配置缺键补默认（版本升级新增配置项时自动补齐）
     config = load_config_raw()
     missing = {k: v for k, v in DEFAULT_CONFIG.items() if k not in config}
@@ -125,10 +131,14 @@ def save_guests(guests: list[dict]):
         c.execute("DELETE FROM guests")
         c.executemany(
             "INSERT INTO guests (id, name, party_size, confirmed_size, family_names,"
-            " table_no, invite_status, confirm_status, note, wechat_sent)"
+            " table_no, invite_status, confirm_status, note, wechat_sent,"
+            " guest_type, group_id)"
             " VALUES (:id, :name, :party_size, :confirmed_size, :family_names,"
-            " :table_no, :invite_status, :confirm_status, :note, :wechat_sent)",
-            [{**g, "wechat_sent": g.get("wechat_sent", "未发送")} for g in guests],
+            " :table_no, :invite_status, :confirm_status, :note, :wechat_sent,"
+            " :guest_type, :group_id)",
+            [{**g, "wechat_sent": g.get("wechat_sent", "未发送"),
+              "guest_type": g.get("guest_type", "宾客及家属"),
+              "group_id": g.get("group_id")} for g in guests],
         )
 
 

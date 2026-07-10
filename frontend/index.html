@@ -737,6 +737,15 @@ function renderAll() {
 }
 
 function isDeclined(g) { return g.confirm_status === '不参加'; }
+function guestType(g) { return g.guest_type || '宾客及家属'; }
+function canSplitGuest(g) { return guestType(g) === '宾客及家属' && g.party_size > 1; }
+
+function typeTag(g) {
+  const t = guestType(g);
+  if (t === '宾客及家属') return '';
+  const cls = t === '宾客' ? 'ok' : 'pending';
+  return ` <span class="tag ${cls}" style="font-size:10px">${esc(t)}</span>`;
+}
 
 function compareTableNo(a, b) {
   return tableNoOrder(a.table_no) - tableNoOrder(b.table_no) || a.table_no.localeCompare(b.table_no, 'zh');
@@ -981,7 +990,6 @@ function bindFloorInteractions(venue, scale) {
     el.addEventListener('dragend', () => el.classList.remove('dragging-guest'));
   });
 
-  // 拖到桌子以外的区域 → 移入未安排
   venue.addEventListener('dragover', e => e.preventDefault());
   venue.addEventListener('drop', e => {
     if (e.target.closest('.table-dot')) return;
@@ -990,8 +998,7 @@ function bindFloorInteractions(venue, scale) {
     if (!gid) return;
     const g = guestById(gid);
     if (!g || !g.table_no) return;
-    if (g.party_size > 1) openMoveModal(gid, '');
-    else doMove(gid, '', true);
+    doMove(gid, '', true);
   });
 
   venue.querySelectorAll('.table-dot').forEach(dot => {
@@ -1006,8 +1013,7 @@ function bindFloorInteractions(venue, scale) {
       if (!gid) return;
       const g = guestById(gid);
       if (!g || g.table_no === no) return;
-      if (g.party_size > 1) openMoveModal(gid, no);
-      else doMove(gid, no, true);
+      doMove(gid, no, true);
     });
 
     // 指针拖动摆位；位移极小视为点击 → 打开桌详情
@@ -1060,10 +1066,12 @@ function openTableDetail(tableNo) {
   if (!t) return;
   const rows = t.guests.map(g => `
     <div class="detail-row">
-      <span class="name">${esc(g.name)}</span>
+      <span class="name">${esc(g.name)}</span>${typeTag(g)}
       <span class="meta">占${seatSize(g)}座（预算${g.party_size}/确认${g.confirmed_size}）
         ${g.family_names ? '· ' + esc(g.family_names) : ''}</span>
       ${statusTag(g.confirm_status)}
+      ${canSplitGuest(g) ? `<button class="btn sm ghost" onclick="splitGuest(${g.id})">拆分</button>` : ''}
+      ${g.group_id ? `<button class="btn sm ghost" onclick="mergeGuest(${g.id})">合并</button>` : ''}
       <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
       <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
     </div>`).join('') || '<div class="empty-note">空桌 — 从右侧「未安排宾客」拖名牌进来</div>';
@@ -1209,7 +1217,7 @@ function renderGuestsTable() {
   const rows = list.map(g => `
       <tr>
         <td><input type="checkbox" ${selectedIds.has(g.id) ? 'checked' : ''} onchange="toggleSelect(${g.id})"></td>
-        <td><b>${esc(g.name)}</b></td>
+        <td><b>${esc(g.name)}</b>${typeTag(g)}</td>
         <td>${g.party_size}</td>
         <td>${esc(g.note)}</td>
         <td>${esc(g.family_names) || '<span style="color:var(--muted)">—</span>'}</td>
@@ -1222,6 +1230,8 @@ function renderGuestsTable() {
         <td>${inlineSelect(g, 'confirm_status', ['待确认', '已确认', '不参加'])}</td>
         <td><div class="ops">
           <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
+          ${canSplitGuest(g) ? `<button class="btn sm ghost" onclick="splitGuest(${g.id})">拆分</button>` : ''}
+          ${g.group_id ? `<button class="btn sm ghost" onclick="mergeGuest(${g.id})">合并</button>` : ''}
           <button class="btn sm ghost" onclick="openMoveModal(${g.id})">换桌</button>
           <button class="btn sm danger" onclick="removeGuest(${g.id})">删除</button>
         </div></td>
@@ -1330,11 +1340,13 @@ function openGuestModal(gid) {
   const g = gid ? guestById(gid) : null;
   showModal(`
     <h3>${g ? '编辑宾客' : '新增宾客'}</h3>
+    <input type="hidden" id="gm-type" value="${esc(g?.guest_type ?? '宾客及家属')}">
+    ${g && guestType(g) !== '宾客及家属' ? `<div style="margin-bottom:12px">${typeTag(g)} <span style="color:var(--muted);font-size:12px">类型不可在此修改，请使用拆分/合并操作</span></div>` : ''}
     <div class="form-grid">
       <div class="form-row full"><label>姓名 *</label>
         <input id="gm-name" value="${esc(g?.name ?? '')}"></div>
-      <div class="form-row"><label>预计人数（含本人）</label>
-        <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}"></div>
+      <div class="form-row"><label>预计人数（含本人）${g?.guest_type === '宾客' ? ' <span style="color:var(--muted);font-size:11px">（宾客固定 1 人）</span>' : ''}</label>
+        <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}" ${g?.guest_type === '宾客' ? 'readonly style="opacity:.6"' : ''}></div>
       <div class="form-row"><label>确认人数（确认会到，留空 = 同预算）</label>
         <input id="gm-confirmed-size" type="number" min="0" value="${g?.confirmed_size ?? ''}"
                placeholder="默认 = 预计人数"></div>
@@ -1370,9 +1382,10 @@ function openGuestModal(gid) {
 
 async function saveGuest(gid) {
   const confirmedRaw = document.getElementById('gm-confirmed-size').value.trim();
+  const gType = document.getElementById('gm-type').value;
   const body = {
     name: document.getElementById('gm-name').value.trim(),
-    party_size: parseInt(document.getElementById('gm-size').value, 10) || 1,
+    party_size: gType === '宾客' ? 1 : (parseInt(document.getElementById('gm-size').value, 10) || 1),
     confirmed_size: confirmedRaw === '' ? null : parseInt(confirmedRaw, 10),
     family_names: document.getElementById('gm-family').value.trim(),
     table_no: document.getElementById('gm-table').value,
@@ -1380,6 +1393,7 @@ async function saveGuest(gid) {
     wechat_sent: document.getElementById('gm-wechat').value,
     confirm_status: document.getElementById('gm-confirm').value,
     note: document.getElementById('gm-note').value.trim(),
+    guest_type: gType,
   };
   if (!body.name) { toast('请填写姓名', true); return; }
   try {
@@ -1523,15 +1537,7 @@ async function submitImport() {
 function openMoveModal(gid, presetTarget) {
   const g = guestById(gid);
   const from = g.table_no ? `「${esc(g.table_no)}」桌` : '未安排区';
-  const familyRow = g.party_size > 1 ? `
-    <div class="checkbox-row">
-      <input type="checkbox" id="mv-family" checked>
-      <div>
-        <label for="mv-family"><b>带上家属一起换桌</b>（共 ${g.party_size} 人）</label>
-        <div class="sub">不勾选则仅「${esc(g.name)}」本人（1 人）换到新桌，
-          其余 ${g.party_size - 1} 人（${esc(g.family_names) || '家属'}）留在原位置，名单中将拆分为两条记录。</div>
-      </div>
-    </div>` : '';
+  const familyRow = '';
   showModal(`
     <h3>换桌：${esc(g.name)}（当前在 ${from}）</h3>
     <div class="form-row"><label>目标位置</label>
@@ -1563,6 +1569,29 @@ async function doMove(gid, target, withFamily) {
     toast(r.family_left
       ? `${g.name} 已换到${dest}，${r.family_left.party_size} 位家属留在原位置`
       : `${g.name}（${g.party_size}人）已移到${dest}`);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---- 拆分 / 合并宾客 ---- */
+
+async function splitGuest(gid) {
+  const g = guestById(gid);
+  if (!confirm(`将「${g.name}」（${g.party_size}人）拆分为：\n· 「${g.name}」宾客（1人）\n· 「${g.name}家属」（${g.party_size - 1}人）\n\n两条记录留在同一桌，可分别拖拽换桌。`)) return;
+  try {
+    await api('POST', `/api/guests/${gid}/split`);
+    closeModal();
+    await reload();
+    toast(`已拆分「${g.name}」为宾客 + 家属`);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function mergeGuest(gid) {
+  if (!confirm('将拆分的宾客和家属合并回一条记录？\n合并后桌号以宾客所在桌为准。')) return;
+  try {
+    const r = await api('POST', `/api/guests/${gid}/merge`);
+    closeModal();
+    await reload();
+    toast(`已合并为「${r.merged.name}」（${r.merged.party_size}人）`);
   } catch (e) { toast(e.message, true); }
 }
 
