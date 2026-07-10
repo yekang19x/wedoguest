@@ -504,11 +504,6 @@
       <button class="btn" onclick="openTableModal()">＋ 新增桌子</button>
       <button class="btn ghost" onclick="resetPositions()">🔄 重新排列</button>
       <button class="btn ghost" id="swap-mode-btn" onclick="toggleSwapMode()">⇄ 调换桌子</button>
-      <label class="hint" style="display:inline-flex;align-items:center;gap:6px">🔍 缩放
-        <input type="range" id="zoom-range" min="100" max="180" value="150" step="10"
-               style="width:110px;padding:0" oninput="setZoom(this.value)">
-        <span id="zoom-val">150%</span>
-      </label>
     </div>
     <div class="floor-layout">
       <div id="venue-box">
@@ -711,6 +706,8 @@ async function reload() {
 
 function guestById(id) { return state.guests.find(g => g.id === id); }
 function tableByNo(no) { return state.tables.find(t => t.table_no === no); }
+function tableLabel(t) { return `${t.table_no}${t.label ? '｜' + t.label : ''}（${t.occupied}/${t.effective_capacity}）`; }
+function dropGid(e) { return parseInt(e.dataTransfer.getData('text/plain'), 10) || 0; }
 
 /* ================= 页签 ================= */
 
@@ -889,23 +886,12 @@ function autoLayout(tables, cfg) {
   return pos;
 }
 
-let zoomFactor = 1.5;
-function setZoom(v) {
-  zoomFactor = v / 100;
-  document.getElementById('zoom-val').textContent = v + '%';
-  if (state) renderFloor();
-}
-
 function renderFloor() {
   const cfg = state.config;
   const venue = document.getElementById('venue');
   const box = document.getElementById('venue-box');
-  // 默认「适应窗口」：宽、高双向受限，整个会场一屏可见；缩放滑块在此基础上放大缩小
   const boxW = box.clientWidth || 800;
-  const boxTop = box.getBoundingClientRect().top;
-  const availH = Math.max(320, window.innerHeight - Math.max(140, boxTop) - 36);
-  const fit = Math.min(boxW / cfg.venue_width, availH / cfg.venue_depth);
-  const scale = Math.max(6, fit * zoomFactor); // px / 米
+  const scale = Math.max(6, (boxW - 24) / cfg.venue_width);
   const px = m => m * scale;
   venue.style.width = px(cfg.venue_width) + 'px';
   venue.style.height = px(cfg.venue_depth) + 'px';
@@ -994,7 +980,7 @@ function bindFloorInteractions(venue, scale) {
   venue.addEventListener('drop', e => {
     if (e.target.closest('.table-dot')) return;
     e.preventDefault();
-    const gid = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const gid = dropGid(e);
     if (!gid) return;
     const g = guestById(gid);
     if (!g || !g.table_no) return;
@@ -1009,7 +995,7 @@ function bindFloorInteractions(venue, scale) {
     dot.addEventListener('drop', e => {
       e.preventDefault();
       dot.classList.remove('dragover');
-      const gid = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const gid = dropGid(e);
       if (!gid) return;
       const g = guestById(gid);
       if (!g || g.table_no === no) return;
@@ -1100,12 +1086,13 @@ function openTableDetail(tableNo) {
     </div>`);
 }
 
+function swapOptionsHtml(excludeNo) {
+  return state.tables.filter(x => x.table_no !== excludeNo)
+    .map(x => `<option value="${esc(x.table_no)}">${esc(tableLabel(x))}</option>`).join('');
+}
+
 function showSwapRow(tableNo) {
-  const others = state.tables.filter(x => x.table_no !== tableNo);
-  const opts = others.map(x => {
-    const lbl = `${x.table_no}${x.label ? '｜' + x.label : ''}（${x.occupied}/${x.effective_capacity}）`;
-    return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
-  }).join('');
+  const opts = swapOptionsHtml(tableNo);
   document.getElementById('td-swap-area').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px">
       <select id="td-swap" style="flex:1">${opts}</select>
@@ -1288,10 +1275,9 @@ document.getElementById('modal-backdrop').addEventListener('click', e => {});
 
 function tableOptions(selected, includeNew) {
   let html = `<option value=""${!selected ? ' selected' : ''}>（未安排）</option>` +
-    state.tables.map(t => {
-      const label = `${t.table_no}${t.label ? '｜' + t.label : ''}（${t.occupied}/${t.effective_capacity}）`;
-      return `<option value="${esc(t.table_no)}"${t.table_no === selected ? ' selected' : ''}>${esc(label)}</option>`;
-    }).join('');
+    state.tables.map(t =>
+      `<option value="${esc(t.table_no)}"${t.table_no === selected ? ' selected' : ''}>${esc(tableLabel(t))}</option>`
+    ).join('');
   if (includeNew) html += `<option value="__new__">＋ 新建桌子…</option>`;
   return html;
 }
@@ -1537,14 +1523,12 @@ async function submitImport() {
 function openMoveModal(gid, presetTarget) {
   const g = guestById(gid);
   const from = g.table_no ? `「${esc(g.table_no)}」桌` : '未安排区';
-  const familyRow = '';
   showModal(`
     <h3>换桌：${esc(g.name)}（当前在 ${from}）</h3>
     <div class="form-row"><label>目标位置</label>
       <select id="mv-target" onchange="onTableSelectChange('mv-target','mv')">${tableOptions(presetTarget !== undefined ? presetTarget : g.table_no, true)}</select>
     </div>
     ${newTableFieldsHtml('mv')}
-    ${familyRow}
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">取消</button>
       <button class="btn" onclick="submitMove(${gid})">确定换桌</button>
@@ -1554,8 +1538,7 @@ function openMoveModal(gid, presetTarget) {
 async function submitMove(gid) {
   const target = await resolveTableTarget('mv-target', 'mv');
   if (target === null) return;
-  const fam = document.getElementById('mv-family');
-  await doMove(gid, target, fam ? fam.checked : true);
+  await doMove(gid, target, true);
 }
 
 async function doMove(gid, target, withFamily) {
@@ -1623,12 +1606,8 @@ function handleSwapClick(tableNo) {
 function openSwapModal(tableNo) {
   const t = tableByNo(tableNo);
   if (!t) return;
-  const others = state.tables.filter(x => x.table_no !== tableNo);
-  if (!others.length) { toast('没有其他桌子可调换', true); return; }
-  const opts = others.map(x => {
-    const lbl = `${x.table_no}${x.label ? '｜' + x.label : ''}（${x.occupied}/${x.effective_capacity}）`;
-    return `<option value="${esc(x.table_no)}">${esc(lbl)}</option>`;
-  }).join('');
+  if (state.tables.length <= 1) { toast('没有其他桌子可调换', true); return; }
+  const opts = swapOptionsHtml(tableNo);
   showModal(`
     <h3>调换桌子：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
     <div class="sub" style="margin-bottom:12px">桌号与位置不变，调换两桌的备注名、容量和全部宾客。</div>
@@ -1652,14 +1631,6 @@ async function doSwapTables(tableA, tableB) {
 }
 
 /* ---- 桌子新增 / 编辑 ---- */
-// 下一个可用的数字桌号（现有最大值 + 1，跳过含「4」的数字，婚礼习俗避 4）
-function nextTableNo() {
-  const nums = state.tables.map(t => /^\d+$/.test(t.table_no) ? parseInt(t.table_no, 10) : 0);
-  let n = Math.max(0, ...nums) + 1;
-  while (String(n).includes('4')) n++;
-  return String(n);
-}
-
 function nextTableNos(count) {
   const nums = state.tables.map(t => /^\d+$/.test(t.table_no) ? parseInt(t.table_no, 10) : 0);
   let n = Math.max(0, ...nums) + 1;
@@ -1671,6 +1642,7 @@ function nextTableNos(count) {
   }
   return result;
 }
+function nextTableNo() { return nextTableNos(1)[0]; }
 
 function onTableCountChange() {
   const count = parseInt(document.getElementById('tm-count').value, 10) || 1;
