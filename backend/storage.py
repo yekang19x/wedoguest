@@ -22,7 +22,6 @@ LEGACY_GUEST_HEADER_ALIASES = {"总人数": "预计人数"}
 
 INVITE_STATUSES = ["未发送", "已发送"]
 CONFIRM_STATUSES = ["待确认", "已确认", "不参加"]
-WECHAT_STATUSES = ["未发送", "已发送"]
 
 DEFAULT_CONFIG = {
     "default_capacity": 10,   # 默认单桌容纳人数
@@ -47,7 +46,6 @@ CREATE TABLE IF NOT EXISTS guests (
     invite_status TEXT NOT NULL DEFAULT '未发送',
     confirm_status TEXT NOT NULL DEFAULT '待确认',
     note TEXT NOT NULL DEFAULT '',
-    wechat_sent TEXT NOT NULL DEFAULT '未发送',
     guest_type TEXT NOT NULL DEFAULT '宾客及家属',
     group_id INTEGER
 );
@@ -86,8 +84,6 @@ def ensure_data_files():
     # 版本升级：补新增列
     with _conn() as c:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(guests)").fetchall()}
-        if "wechat_sent" not in cols:
-            c.execute("ALTER TABLE guests ADD COLUMN wechat_sent TEXT NOT NULL DEFAULT '未发送'")
         if "guest_type" not in cols:
             c.execute("ALTER TABLE guests ADD COLUMN guest_type TEXT NOT NULL DEFAULT '宾客及家属'")
         if "group_id" not in cols:
@@ -109,11 +105,11 @@ def _seed_demo_data():
     ])
     save_guests([
         {"id": 1, "name": "张伟", "party_size": 3, "confirmed_size": 2, "family_names": "李娜,张小宝",
-         "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家", "wechat_sent": "已发送"},
-        {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 2, "family_names": "刘强",
-         "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": "", "wechat_sent": "未发送"},
-        {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 1, "family_names": "",
-         "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学", "wechat_sent": "未发送"},
+         "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家"},
+        {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 0, "family_names": "刘强",
+         "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": ""},
+        {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 0, "family_names": "",
+         "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学"},
     ])
     save_config(dict(DEFAULT_CONFIG))
 
@@ -131,13 +127,12 @@ def save_guests(guests: list[dict]):
         c.execute("DELETE FROM guests")
         c.executemany(
             "INSERT INTO guests (id, name, party_size, confirmed_size, family_names,"
-            " table_no, invite_status, confirm_status, note, wechat_sent,"
+            " table_no, invite_status, confirm_status, note,"
             " guest_type, group_id)"
             " VALUES (:id, :name, :party_size, :confirmed_size, :family_names,"
-            " :table_no, :invite_status, :confirm_status, :note, :wechat_sent,"
+            " :table_no, :invite_status, :confirm_status, :note,"
             " :guest_type, :group_id)",
-            [{**g, "wechat_sent": g.get("wechat_sent", "未发送"),
-              "guest_type": g.get("guest_type", "宾客及家属"),
+            [{**g, "guest_type": g.get("guest_type", "宾客及家属"),
               "group_id": g.get("group_id")} for g in guests],
         )
 
@@ -253,7 +248,7 @@ def _migrate_legacy():
                 "confirmed_size": int(float(conf_str)) if conf_str else party_size,
                 "family_names": str(cell(row, "家属姓名") or "").strip(),
                 "table_no": str(cell(row, "桌号") or "").strip(),
-                "invite_status": str(cell(row, "邀请函状态") or "未发送").strip(),
+                "invite_status": str(cell(row, "请帖状态") or cell(row, "邀请函状态") or "未发送").strip(),
                 "confirm_status": str(cell(row, "确认状态") or "待确认").strip(),
                 "note": str(cell(row, "备注") or "").strip(),
             })

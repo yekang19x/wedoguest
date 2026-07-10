@@ -544,8 +544,7 @@
     <div class="batch-bar" id="batch-bar" style="display:none">
       <span class="count" id="batch-count"></span>
       <button class="btn sm ghost" onclick="batchSetTable()">换桌</button>
-      <button class="btn sm ghost" onclick="batchSetField('invite_status', ['未发送','已发送'], '邀请状态')">设置邀请状态</button>
-      <button class="btn sm ghost" onclick="batchSetField('wechat_sent', ['未发送','已发送'], '微信通知')">设置微信通知</button>
+      <button class="btn sm ghost" onclick="batchSetField('invite_status', ['未发送','已发送'], '请帖')">设置请帖</button>
       <button class="btn sm ghost" onclick="batchSetField('confirm_status', ['待确认','已确认','不参加'], '确认状态')">设置确认状态</button>
       <button class="btn sm ghost" onclick="batchSetNote()">修改备注</button>
       <button class="btn sm danger" onclick="batchDelete()">删除</button>
@@ -562,8 +561,7 @@
           <th>家属姓名</th>
           <th>确认人数</th>
           <th class="sortable" data-sort="table_no" onclick="sortGuests('table_no')">桌号</th>
-          <th>邀请函</th>
-          <th>微信通知</th>
+          <th>请帖</th>
           <th class="sortable" data-sort="confirm_status" onclick="sortGuests('confirm_status')">确认状态</th>
           <th style="width:190px">操作</th>
         </tr></thead>
@@ -788,8 +786,7 @@ function renderStats() {
     {lbl: '不参加', num: s.declined},
     {lbl: '已安排桌位', num: s.seated},
     {lbl: '未安排', num: s.unseated},
-    {lbl: '邀请函已发', num: `${s.invite_sent}/${s.guest_count}`},
-    {lbl: '微信已发', num: `${s.wechat_sent}/${s.guest_count}`},
+    {lbl: '请帖已发', num: `${s.invite_sent}/${s.guest_count}`},
   ];
   document.getElementById('stats-bar').innerHTML = items.map(i => `
     <div class="stat${i.over ? ' over' : ''}">
@@ -803,7 +800,7 @@ function chipHtml(g) {
   if (g.confirm_status === '待确认') cls.push('pending-status');
   const title = `${g.name}｜预算${g.party_size}人/确认${g.confirmed_size}人` +
     (g.family_names ? `｜家属：${g.family_names}` : '') +
-    `｜${g.invite_status}｜${g.confirm_status}` + (g.note ? `｜${g.note}` : '');
+    `｜请帖${g.invite_status}｜${g.confirm_status}` + (g.note ? `｜${g.note}` : '');
   return `<span class="${cls.join(' ')}" draggable="true" data-gid="${g.id}"
       title="${esc(title)}" onclick="openGuestModal(${g.id})">
       <span class="n">${esc(g.name)}</span><span class="sz">${seatSize(g)}</span>
@@ -1213,7 +1210,6 @@ function renderGuestsTable() {
               : `<span style="color:var(--muted)">${g.confirmed_size}</span>`}</td>
         <td>${g.table_no ? esc(g.table_no) : '<span class="tag plain">未安排</span>'}</td>
         <td>${inlineSelect(g, 'invite_status', ['未发送', '已发送'])}</td>
-        <td>${inlineSelect(g, 'wechat_sent', ['未发送', '已发送'])}</td>
         <td>${inlineSelect(g, 'confirm_status', ['待确认', '已确认', '不参加'])}</td>
         <td><div class="ops">
           <button class="btn sm ghost" onclick="openGuestModal(${g.id})">编辑</button>
@@ -1333,22 +1329,17 @@ function openGuestModal(gid) {
         <input id="gm-name" value="${esc(g?.name ?? '')}"></div>
       <div class="form-row"><label>预计人数（含本人）${g?.guest_type === '宾客' ? ' <span style="color:var(--muted);font-size:11px">（宾客固定 1 人）</span>' : ''}</label>
         <input id="gm-size" type="number" min="1" value="${g?.party_size ?? 1}" ${g?.guest_type === '宾客' ? 'readonly style="opacity:.6"' : ''}></div>
-      <div class="form-row"><label>确认人数（确认会到，留空 = 同预算）</label>
-        <input id="gm-confirmed-size" type="number" min="0" value="${g?.confirmed_size ?? ''}"
-               placeholder="默认 = 预计人数"></div>
+      <div class="form-row"><label>确认人数（确认会到，0 = 未确认）</label>
+        <input id="gm-confirmed-size" type="number" min="0" value="${g?.confirmed_size ?? 0}"
+               placeholder="0 = 未确认"></div>
       <div class="form-row full"><label>家属信息</label>
         <input id="gm-family" value="${esc(g?.family_names ?? '')}" placeholder="如：张三、李四等4位家属"></div>
       <div class="form-row"><label>桌号</label>
         <select id="gm-table">${tableOptions(g?.table_no ?? '')}</select></div>
-      <div class="form-row"><label>邀请函状态</label>
+      <div class="form-row"><label>请帖</label>
         <select id="gm-invite">
           <option${(g?.invite_status ?? '未发送') === '未发送' ? ' selected' : ''}>未发送</option>
           <option${g?.invite_status === '已发送' ? ' selected' : ''}>已发送</option>
-        </select></div>
-      <div class="form-row"><label>微信通知</label>
-        <select id="gm-wechat">
-          <option${(g?.wechat_sent ?? '未发送') === '未发送' ? ' selected' : ''}>未发送</option>
-          <option${g?.wechat_sent === '已发送' ? ' selected' : ''}>已发送</option>
         </select></div>
       <div class="form-row"><label>确认状态</label>
         <select id="gm-confirm">
@@ -1376,7 +1367,6 @@ async function saveGuest(gid) {
     family_names: document.getElementById('gm-family').value.trim(),
     table_no: document.getElementById('gm-table').value,
     invite_status: document.getElementById('gm-invite').value,
-    wechat_sent: document.getElementById('gm-wechat').value,
     confirm_status: document.getElementById('gm-confirm').value,
     note: document.getElementById('gm-note').value.trim(),
     guest_type: gType,
@@ -1485,10 +1475,10 @@ function openImportModal() {
       <label><input type="radio" name="im-mode" value="replace"> <b>覆盖全部</b>（清空现有宾客后导入）</label>
     </div>
     <div style="font-size:12px; color:var(--muted); line-height:1.7; margin-top:10px">
-      表头格式：<b>姓名｜家属｜预计人数｜确认人数｜桌号｜邀请状态｜确认状态｜备注</b><br>
+      表头格式：<b>姓名｜家属｜预计人数｜确认人数｜桌号｜请帖｜确认状态｜备注</b><br>
       · 家属列填写家属姓名（如：张三、李四），按预计人数自动补全<br>
-      · 预计人数留空默认1；确认人数留空默认等于预计人数<br>
-      · 邀请状态：未发送 / 已发送；确认状态：待确认 / 已确认 / 不参加<br>
+      · 预计人数留空默认1；确认人数留空默认 0（未确认）<br>
+      · 请帖：未发送 / 已发送；确认状态：待确认 / 已确认 / 不参加<br>
       · 建议先点「导出 Excel」获得标准模板
     </div>
     <div class="modal-actions">

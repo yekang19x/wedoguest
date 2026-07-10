@@ -16,7 +16,7 @@ from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 
 import storage
-from storage import CONFIRM_STATUSES, INVITE_STATUSES, WECHAT_STATUSES
+from storage import CONFIRM_STATUSES, INVITE_STATUSES
 
 GUEST_TYPES = ["宾客及家属", "宾客", "家属"]
 
@@ -37,7 +37,6 @@ class GuestIn(BaseModel):
     table_no: str = ""
     invite_status: str = "未发送"
     confirm_status: str = "待确认"
-    wechat_sent: str = "未发送"
     note: str = ""
     guest_type: str = "宾客及家属"
     force: bool = False  # 目标桌超容时是否强制安排
@@ -63,7 +62,6 @@ class BatchUpdateIn(BaseModel):
     invite_status: str | None = None
     confirm_status: str | None = None
     note: str | None = None
-    wechat_sent: str | None = None
 
 
 class ConfigIn(BaseModel):
@@ -78,13 +76,11 @@ class ConfigIn(BaseModel):
 
 # ---------- 内部工具 ----------
 
-def _validate_statuses(invite_status: str, confirm_status: str, wechat_sent: str):
+def _validate_statuses(invite_status: str, confirm_status: str):
     if invite_status not in INVITE_STATUSES:
-        raise HTTPException(400, f"邀请函状态必须是 {INVITE_STATUSES} 之一")
+        raise HTTPException(400, f"请帖状态必须是 {INVITE_STATUSES} 之一")
     if confirm_status not in CONFIRM_STATUSES:
         raise HTTPException(400, f"确认状态必须是 {CONFIRM_STATUSES} 之一")
-    if wechat_sent not in WECHAT_STATUSES:
-        raise HTTPException(400, f"微信通知状态必须是 {WECHAT_STATUSES} 之一")
 
 
 def _seat_size(g: dict) -> int:
@@ -152,7 +148,6 @@ def _build_stats(guests: list[dict], config: dict) -> dict:
         "guest_count": len(guests),
         "invite_sent": sum(1 for g in guests if g["invite_status"] == "已发送"),
         "invite_unsent": sum(1 for g in guests if g["invite_status"] == "未发送"),
-        "wechat_sent": sum(1 for g in guests if g.get("wechat_sent") == "已发送"),
     }
 
 
@@ -200,12 +195,11 @@ def _guest_fields(body: GuestIn) -> dict:
     return {
         "name": body.name.strip(),
         "party_size": body.party_size,
-        "confirmed_size": body.confirmed_size if body.confirmed_size is not None else body.party_size,
+        "confirmed_size": body.confirmed_size if body.confirmed_size is not None else 0,
         "family_names": body.family_names.strip(),
         "table_no": body.table_no.strip(),
         "invite_status": body.invite_status,
         "confirm_status": body.confirm_status,
-        "wechat_sent": body.wechat_sent,
         "note": body.note.strip(),
         "guest_type": body.guest_type,
     }
@@ -213,7 +207,7 @@ def _guest_fields(body: GuestIn) -> dict:
 
 @app.post("/api/guests")
 def create_guest(body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
+    _validate_statuses(body.invite_status, body.confirm_status)
     _validate_guest_type(body.guest_type, body.party_size)
     guests = storage.load_guests()
     tables = storage.load_tables()
@@ -228,7 +222,7 @@ def create_guest(body: GuestIn):
 
 @app.put("/api/guests/{gid}")
 def update_guest(gid: int, body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status, body.wechat_sent)
+    _validate_statuses(body.invite_status, body.confirm_status)
     _validate_guest_type(body.guest_type, body.party_size)
     guests = storage.load_guests()
     tables = storage.load_tables()
@@ -257,8 +251,6 @@ def batch_update_guests(body: BatchUpdateIn):
         raise HTTPException(400, f"invite_status 必须是 {'、'.join(INVITE_STATUSES)} 之一")
     if body.confirm_status is not None and body.confirm_status not in CONFIRM_STATUSES:
         raise HTTPException(400, f"confirm_status 必须是 {'、'.join(CONFIRM_STATUSES)} 之一")
-    if body.wechat_sent is not None and body.wechat_sent not in WECHAT_STATUSES:
-        raise HTTPException(400, f"wechat_sent 必须是 {'、'.join(WECHAT_STATUSES)} 之一")
     guests = storage.load_guests()
     id_set = set(body.ids)
     updated = 0
@@ -273,8 +265,6 @@ def batch_update_guests(body: BatchUpdateIn):
             g["confirm_status"] = body.confirm_status
         if body.note is not None:
             g["note"] = body.note
-        if body.wechat_sent is not None:
-            g["wechat_sent"] = body.wechat_sent
         updated += 1
     storage.save_guests(guests)
     return {"updated": updated}
@@ -311,7 +301,7 @@ def move_guest(gid: int, body: MoveIn):
             "family_names": guest["family_names"],
             "table_no": guest["table_no"],
             "invite_status": guest["invite_status"],
-            "wechat_sent": guest.get("wechat_sent", "未发送"),
+
             "confirm_status": guest["confirm_status"],
             "note": "",
             "guest_type": "家属",
@@ -351,7 +341,6 @@ def split_guest(gid: int):
         "family_names": guest["family_names"],
         "table_no": guest["table_no"],
         "invite_status": guest["invite_status"],
-        "wechat_sent": guest.get("wechat_sent", "未发送"),
         "confirm_status": guest["confirm_status"],
         "note": guest["note"],
         "guest_type": "家属",
@@ -394,7 +383,7 @@ def merge_guest(gid: int):
 
 
 # ---------- 宾客名单导入 / 导出（xlsx） ----------
-# 交换格式：姓名 | 家属 | 预计人数 | 确认人数 | 桌号 | 邀请状态 | 确认状态 | 备注
+# 交换格式：姓名 | 家属 | 预计人数 | 确认人数 | 桌号 | 请帖 | 确认状态 | 备注 | 类型
 
 EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -458,7 +447,7 @@ def _export_family(g) -> str:
 def export_guests():
     guests = storage.load_guests()
     headers = ["姓名", "家属", "预计人数", "确认人数", "桌号",
-               "邀请状态", "微信通知", "确认状态", "备注", "类型"]
+               "请帖", "确认状态", "备注", "类型"]
 
     wb = Workbook()
     ws = wb.active
@@ -466,7 +455,7 @@ def export_guests():
     ws.append(headers)
     for g in guests:
         ws.append([g["name"], _export_family(g), g["party_size"], g["confirmed_size"],
-                   g["table_no"], g["invite_status"], g.get("wechat_sent", "未发送"),
+                   g["table_no"], g["invite_status"],
                    g["confirm_status"], g["note"], g.get("guest_type", "宾客及家属")])
 
     # 表头样式
@@ -558,14 +547,11 @@ async def import_guests(request: Request, mode: str = "append"):
             unknown_tables.append(table_no)
             known_tables.add(table_no)
 
-        invite_raw = _norm_cell(cell(row, "邀请状态"))
+        invite_raw = _norm_cell(cell(row, "请帖")) or _norm_cell(cell(row, "邀请状态"))
         invite_status = invite_raw if invite_raw in INVITE_STATUSES else "未发送"
 
         confirm_raw = _norm_cell(cell(row, "确认状态"))
         confirm_status = confirm_raw if confirm_raw in CONFIRM_STATUSES else "待确认"
-
-        wechat_raw = _norm_cell(cell(row, "微信通知"))
-        wechat_sent = wechat_raw if wechat_raw in WECHAT_STATUSES else "未发送"
 
         note = _norm_cell(cell(row, "备注"))
 
@@ -580,7 +566,6 @@ async def import_guests(request: Request, mode: str = "append"):
             "family_names": family_names,
             "table_no": table_no,
             "invite_status": invite_status,
-            "wechat_sent": wechat_sent,
             "confirm_status": confirm_status,
             "note": note,
             "guest_type": guest_type,
