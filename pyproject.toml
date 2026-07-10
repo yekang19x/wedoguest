@@ -1,0 +1,16 @@
+[project]
+name = "wedoguest"
+version = "0.1.0"
+description = "婚礼宾客统计系统"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "openpyxl>=3.1",
+]
+
+[project.scripts]
+wedoguest = "app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

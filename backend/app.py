@@ -3,7 +3,6 @@
 数据存 data/wedding.db（SQLite）；宾客名单支持 xlsx 导入/导出。
 """
 
-import re
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -16,9 +15,7 @@ from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 
 import storage
-from storage import CONFIRM_STATUSES, INVITE_STATUSES
-
-GUEST_TYPES = ["宾客及家属", "宾客", "家属"]
+from storage import INVITE_STATUSES
 
 app = FastAPI(title="婚礼宾客统计系统")
 
@@ -31,20 +28,17 @@ storage.ensure_data_files()
 
 class GuestIn(BaseModel):
     name: str = Field(min_length=1)
-    party_size: int = Field(default=1, ge=1)          # 预计人数（含本人）
-    confirmed_size: int | None = Field(default=None, ge=0)  # 确认会到人数，None = 等于预计人数
-    family_names: str = ""
+    party_size: int = Field(default=1, ge=1)
+    confirmed_size: int | None = Field(default=None, ge=0)
     table_no: str = ""
     invite_status: str = "未发送"
-    confirm_status: str = "待确认"
-    note: str = ""
-    guest_type: str = "宾客及家属"
-    force: bool = False  # 目标桌超容时是否强制安排
+    category: str = ""
+    family: str = ""
+    force: bool = False
 
 
 class MoveIn(BaseModel):
-    target_table: str = ""  # 空字符串 = 移到未安排区
-    with_family: bool = True
+    target_table: str = ""
     force: bool = False
 
 
@@ -60,8 +54,8 @@ class BatchUpdateIn(BaseModel):
     ids: list[int] = Field(min_length=1)
     table_no: str | None = None
     invite_status: str | None = None
-    confirm_status: str | None = None
-    note: str | None = None
+    category: str | None = None
+    family: str | None = None
 
 
 class ConfigIn(BaseModel):
@@ -76,20 +70,14 @@ class ConfigIn(BaseModel):
 
 # ---------- 内部工具 ----------
 
-def _validate_statuses(invite_status: str, confirm_status: str):
+def _validate_invite_status(invite_status: str):
     if invite_status not in INVITE_STATUSES:
         raise HTTPException(400, f"请帖状态必须是 {INVITE_STATUSES} 之一")
-    if confirm_status not in CONFIRM_STATUSES:
-        raise HTTPException(400, f"确认状态必须是 {CONFIRM_STATUSES} 之一")
 
 
 def _seat_size(g: dict) -> int:
-    """占座人数：已确认按确认人数，待确认按预计人数，不参加不占座。"""
-    if g["confirm_status"] == "不参加":
-        return 0
-    if g["confirm_status"] == "已确认":
-        return g["confirmed_size"]
-    return g["party_size"]
+    """占座人数：confirmed_size > 0 时按确认人数，否则按预计人数。"""
+    return g["confirmed_size"] if g["confirmed_size"] > 0 else g["party_size"]
 
 
 def _table_occupied(guests: list[dict], table_no: str, exclude_ids: set[int] = frozenset()) -> int:
@@ -131,17 +119,12 @@ def _find_guest(guests: list[dict], gid: int) -> dict:
 
 
 def _build_stats(guests: list[dict], config: dict) -> dict:
-    # 统计栏展示录入的预计与确认总量；占座人数仍由 _seat_size 按状态计算。
     expected = sum(g["party_size"] for g in guests)
     confirmed = sum(g["confirmed_size"] for g in guests)
-    pending = sum(g["party_size"] for g in guests if g["confirm_status"] == "待确认")
-    declined = sum(g["party_size"] for g in guests if g["confirm_status"] == "不参加")
     return {
         "budget_total": config["budget_total"],
-        "invited_total": sum(g["party_size"] for g in guests),  # 预算合计
+        "invited_total": expected,
         "confirmed": confirmed,
-        "pending": pending,
-        "declined": declined,
         "expected": expected,
         "seated": sum(_seat_size(g) for g in guests if g["table_no"]),
         "unseated": sum(_seat_size(g) for g in guests if not g["table_no"]),
@@ -180,40 +163,27 @@ def overview():
 
 # ---------- 宾客 ----------
 
-def _validate_guest_type(guest_type: str, party_size: int):
-    if guest_type not in GUEST_TYPES:
-        raise HTTPException(400, f"宾客类型必须是 {GUEST_TYPES} 之一")
-    if guest_type == "宾客" and party_size != 1:
-        raise HTTPException(400, "「宾客」类型的人数固定为 1")
-
-
-def _next_group_id(guests: list[dict]) -> int:
-    return max((g.get("group_id") or 0 for g in guests), default=0) + 1
-
-
 def _guest_fields(body: GuestIn) -> dict:
+    name = body.name.strip()
     return {
-        "name": body.name.strip(),
+        "name": name,
         "party_size": body.party_size,
         "confirmed_size": body.confirmed_size if body.confirmed_size is not None else 0,
-        "family_names": body.family_names.strip(),
         "table_no": body.table_no.strip(),
         "invite_status": body.invite_status,
-        "confirm_status": body.confirm_status,
-        "note": body.note.strip(),
-        "guest_type": body.guest_type,
+        "category": body.category.strip(),
+        "family": body.family.strip() or f"{name}一家",
     }
 
 
 @app.post("/api/guests")
 def create_guest(body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status)
-    _validate_guest_type(body.guest_type, body.party_size)
+    _validate_invite_status(body.invite_status)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
     fields = _guest_fields(body)
-    guest = {"id": storage.next_guest_id(guests), "group_id": None, **fields}
+    guest = {"id": storage.next_guest_id(guests), **fields}
     _check_capacity(guests, tables, config, guest["table_no"], _seat_size(guest), force=body.force)
     guests.append(guest)
     storage.save_guests(guests)
@@ -222,8 +192,7 @@ def create_guest(body: GuestIn):
 
 @app.put("/api/guests/{gid}")
 def update_guest(gid: int, body: GuestIn):
-    _validate_statuses(body.invite_status, body.confirm_status)
-    _validate_guest_type(body.guest_type, body.party_size)
+    _validate_invite_status(body.invite_status)
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
@@ -249,8 +218,6 @@ def delete_guest(gid: int):
 def batch_update_guests(body: BatchUpdateIn):
     if body.invite_status is not None and body.invite_status not in INVITE_STATUSES:
         raise HTTPException(400, f"invite_status 必须是 {'、'.join(INVITE_STATUSES)} 之一")
-    if body.confirm_status is not None and body.confirm_status not in CONFIRM_STATUSES:
-        raise HTTPException(400, f"confirm_status 必须是 {'、'.join(CONFIRM_STATUSES)} 之一")
     guests = storage.load_guests()
     id_set = set(body.ids)
     updated = 0
@@ -261,10 +228,10 @@ def batch_update_guests(body: BatchUpdateIn):
             g["table_no"] = body.table_no
         if body.invite_status is not None:
             g["invite_status"] = body.invite_status
-        if body.confirm_status is not None:
-            g["confirm_status"] = body.confirm_status
-        if body.note is not None:
-            g["note"] = body.note
+        if body.category is not None:
+            g["category"] = body.category
+        if body.family is not None:
+            g["family"] = body.family
         updated += 1
     storage.save_guests(guests)
     return {"updated": updated}
@@ -272,124 +239,25 @@ def batch_update_guests(body: BatchUpdateIn):
 
 @app.post("/api/guests/{gid}/move")
 def move_guest(gid: int, body: MoveIn):
-    """换桌。with_family=False 且「宾客及家属」类型人数 > 1 时拆分记录。"""
     guests = storage.load_guests()
     tables = storage.load_tables()
     config = storage.load_config()
     guest = _find_guest(guests, gid)
     target = body.target_table.strip()
-
-    can_split = (guest.get("guest_type", "宾客及家属") == "宾客及家属"
-                 and guest["party_size"] > 1)
-    split = not body.with_family and can_split
-    if split:
-        person_confirmed = min(1, guest["confirmed_size"])
-        moving = {**guest, "party_size": 1, "confirmed_size": person_confirmed}
-    else:
-        moving = guest
-    _check_capacity(guests, tables, config, target, _seat_size(moving),
+    _check_capacity(guests, tables, config, target, _seat_size(guest),
                     exclude_ids={gid}, force=body.force)
-
-    result = {"moved": None, "family_left": None}
-    if split:
-        group_id = _next_group_id(guests)
-        family = {
-            "id": storage.next_guest_id(guests),
-            "name": f"{guest['name']}家属",
-            "party_size": guest["party_size"] - 1,
-            "confirmed_size": guest["confirmed_size"] - person_confirmed,
-            "family_names": guest["family_names"],
-            "table_no": guest["table_no"],
-            "invite_status": guest["invite_status"],
-
-            "confirm_status": guest["confirm_status"],
-            "note": "",
-            "guest_type": "家属",
-            "group_id": group_id,
-        }
-        guests.append(family)
-        guest.update({
-            "party_size": 1, "confirmed_size": person_confirmed,
-            "family_names": "", "table_no": target,
-            "guest_type": "宾客", "group_id": group_id,
-        })
-        result["family_left"] = family
-    else:
-        guest["table_no"] = target
-    result["moved"] = guest
+    guest["table_no"] = target
     storage.save_guests(guests)
-    return result
-
-
-@app.post("/api/guests/{gid}/split")
-def split_guest(gid: int):
-    """将「宾客及家属」拆分为「宾客」(1人) + 「家属」(N-1人)，共享 group_id。"""
-    guests = storage.load_guests()
-    guest = _find_guest(guests, gid)
-    if guest.get("guest_type", "宾客及家属") != "宾客及家属":
-        raise HTTPException(400, "只有「宾客及家属」类型可以拆分")
-    if guest["party_size"] <= 1:
-        raise HTTPException(400, "人数为 1 的宾客无法拆分")
-
-    group_id = _next_group_id(guests)
-    person_confirmed = min(1, guest["confirmed_size"])
-    family = {
-        "id": storage.next_guest_id(guests),
-        "name": f"{guest['name']}家属",
-        "party_size": guest["party_size"] - 1,
-        "confirmed_size": guest["confirmed_size"] - person_confirmed,
-        "family_names": guest["family_names"],
-        "table_no": guest["table_no"],
-        "invite_status": guest["invite_status"],
-        "confirm_status": guest["confirm_status"],
-        "note": guest["note"],
-        "guest_type": "家属",
-        "group_id": group_id,
-    }
-    guests.append(family)
-    guest.update({
-        "party_size": 1, "confirmed_size": person_confirmed,
-        "family_names": "", "guest_type": "宾客", "group_id": group_id,
-    })
-    storage.save_guests(guests)
-    return {"guest": guest, "family": family}
-
-
-@app.post("/api/guests/{gid}/merge")
-def merge_guest(gid: int):
-    """将同 group_id 的「宾客」+「家属」合并回一条「宾客及家属」。"""
-    guests = storage.load_guests()
-    guest = _find_guest(guests, gid)
-    gid_group = guest.get("group_id")
-    if not gid_group:
-        raise HTTPException(400, "该宾客没有关联的拆分组")
-    group = [g for g in guests if g.get("group_id") == gid_group]
-    if len(group) != 2:
-        raise HTTPException(400, "拆分组数据异常，无法合并")
-    primary = next((g for g in group if g.get("guest_type") == "宾客"), None)
-    family = next((g for g in group if g.get("guest_type") == "家属"), None)
-    if not primary or not family:
-        raise HTTPException(400, "拆分组缺少宾客或家属记录")
-    primary.update({
-        "party_size": primary["party_size"] + family["party_size"],
-        "confirmed_size": primary["confirmed_size"] + family["confirmed_size"],
-        "family_names": family["family_names"],
-        "guest_type": "宾客及家属",
-        "group_id": None,
-    })
-    guests.remove(family)
-    storage.save_guests(guests)
-    return {"merged": primary}
+    return {"moved": guest}
 
 
 # ---------- 宾客名单导入 / 导出（xlsx） ----------
-# 交换格式：姓名 | 家属 | 预计人数 | 确认人数 | 桌号 | 请帖 | 确认状态 | 备注 | 类型
+# 交换格式：姓名 | 预计人数 | 确认人数 | 桌号 | 请帖 | 分类 | 家庭
 
 EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _norm_cell(v) -> str:
-    """单元格转字符串；Excel 数字桌号 1.0 规整为 '1'。"""
     if v is None:
         return ""
     if isinstance(v, float) and v.is_integer():
@@ -405,58 +273,19 @@ def _cell_int(v) -> int | None:
         return None
 
 
-_RE_NAME_ETC = re.compile(r"^(.+?)等(\d+)位家属$")
-_RE_COUNT_ONLY = re.compile(r"^(\d+)位家属$")
-
-
-def _format_family(names: list[str], party_size: int) -> str:
-    family_count = party_size - 1
-    if family_count <= 0:
-        return ""
-    if not names:
-        return f"{family_count}位家属"
-    if len(names) >= family_count:
-        return "、".join(names[:family_count])
-    return f"{'、'.join(names)}等{family_count}位家属"
-
-
-def _parse_family_names(text: str) -> list[str]:
-    text = text.strip()
-    if not text or text == "无":
-        return []
-    if _RE_COUNT_ONLY.match(text):
-        return []
-    m = _RE_NAME_ETC.match(text)
-    if m:
-        return [n.strip() for n in m.group(1).split("、") if n.strip()]
-    return [n.strip() for n in text.split("、") if n.strip()]
-
-
-def _export_family(g) -> str:
-    fn = g["family_names"]
-    if not fn:
-        return "无"
-    if "," in fn:
-        names = [s.strip() for s in fn.split(",") if s.strip()]
-    else:
-        names = _parse_family_names(fn)
-    return _format_family(names, g["party_size"]) or "无"
-
-
 @app.get("/api/guests/export")
 def export_guests():
     guests = storage.load_guests()
-    headers = ["姓名", "家属", "预计人数", "确认人数", "桌号",
-               "请帖", "确认状态", "备注", "类型"]
+    headers = ["姓名", "预计人数", "确认人数", "桌号", "请帖", "分类", "家庭"]
 
     wb = Workbook()
     ws = wb.active
     ws.title = "宾客名单"
     ws.append(headers)
     for g in guests:
-        ws.append([g["name"], _export_family(g), g["party_size"], g["confirmed_size"],
+        ws.append([g["name"], g["party_size"], g["confirmed_size"],
                    g["table_no"], g["invite_status"],
-                   g["confirm_status"], g["note"], g.get("guest_type", "宾客及家属")])
+                   g.get("category", ""), g.get("family", "")])
 
     # 表头样式
     hdr_font = Font(bold=True, color="FFFFFF", size=11)
@@ -535,12 +364,8 @@ async def import_guests(request: Request, mode: str = "append"):
 
         party = _cell_int(cell(row, "预计人数")) or 1
 
-        family_text = _norm_cell(cell(row, "家属"))
-        family_names_list = _parse_family_names(family_text)
-        family_names = _format_family(family_names_list, party)
-
         conf_raw = _cell_int(cell(row, "确认人数"))
-        confirmed = min(conf_raw, party) if conf_raw is not None else party
+        confirmed = min(conf_raw, party) if conf_raw is not None else 0
 
         table_no = _norm_cell(cell(row, "桌号"))
         if table_no and table_no not in known_tables:
@@ -550,26 +375,18 @@ async def import_guests(request: Request, mode: str = "append"):
         invite_raw = _norm_cell(cell(row, "请帖")) or _norm_cell(cell(row, "邀请状态"))
         invite_status = invite_raw if invite_raw in INVITE_STATUSES else "未发送"
 
-        confirm_raw = _norm_cell(cell(row, "确认状态"))
-        confirm_status = confirm_raw if confirm_raw in CONFIRM_STATUSES else "待确认"
-
-        note = _norm_cell(cell(row, "备注"))
-
-        type_raw = _norm_cell(cell(row, "类型"))
-        guest_type = type_raw if type_raw in GUEST_TYPES else "宾客及家属"
+        category = _norm_cell(cell(row, "分类")) or _norm_cell(cell(row, "备注"))
+        family = _norm_cell(cell(row, "家庭")) or f"{name}一家"
 
         guests.append({
             "id": next_id,
             "name": name,
             "party_size": party,
             "confirmed_size": max(0, confirmed),
-            "family_names": family_names,
             "table_no": table_no,
             "invite_status": invite_status,
-            "confirm_status": confirm_status,
-            "note": note,
-            "guest_type": guest_type,
-            "group_id": None,
+            "category": category,
+            "family": family,
         })
         next_id += 1
         imported += 1

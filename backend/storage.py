@@ -21,7 +21,6 @@ LEGACY_CONFIG_CSV = DATA_DIR / "config.csv"
 LEGACY_GUEST_HEADER_ALIASES = {"总人数": "预计人数"}
 
 INVITE_STATUSES = ["未发送", "已发送"]
-CONFIRM_STATUSES = ["待确认", "已确认", "不参加"]
 
 DEFAULT_CONFIG = {
     "default_capacity": 10,   # 默认单桌容纳人数
@@ -40,14 +39,11 @@ CREATE TABLE IF NOT EXISTS guests (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     party_size INTEGER NOT NULL DEFAULT 1,
-    confirmed_size INTEGER NOT NULL DEFAULT 1,
-    family_names TEXT NOT NULL DEFAULT '',
+    confirmed_size INTEGER NOT NULL DEFAULT 0,
     table_no TEXT NOT NULL DEFAULT '',
     invite_status TEXT NOT NULL DEFAULT '未发送',
-    confirm_status TEXT NOT NULL DEFAULT '待确认',
-    note TEXT NOT NULL DEFAULT '',
-    guest_type TEXT NOT NULL DEFAULT '宾客及家属',
-    group_id INTEGER
+    category TEXT NOT NULL DEFAULT '',
+    family TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS tables (
     table_no TEXT PRIMARY KEY,
@@ -81,13 +77,16 @@ def ensure_data_files():
             _migrate_legacy()
         else:
             _seed_demo_data()
-    # 版本升级：补新增列
+    # 版本升级：补新增列 / 迁移旧列
     with _conn() as c:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(guests)").fetchall()}
-        if "guest_type" not in cols:
-            c.execute("ALTER TABLE guests ADD COLUMN guest_type TEXT NOT NULL DEFAULT '宾客及家属'")
-        if "group_id" not in cols:
-            c.execute("ALTER TABLE guests ADD COLUMN group_id INTEGER")
+        if "category" not in cols:
+            c.execute("ALTER TABLE guests ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+            if "note" in cols:
+                c.execute("UPDATE guests SET category = note")
+        if "family" not in cols:
+            c.execute("ALTER TABLE guests ADD COLUMN family TEXT NOT NULL DEFAULT ''")
+            c.execute("UPDATE guests SET family = name || '一家' WHERE family = ''")
     # 配置缺键补默认（版本升级新增配置项时自动补齐）
     config = load_config_raw()
     missing = {k: v for k, v in DEFAULT_CONFIG.items() if k not in config}
@@ -104,12 +103,12 @@ def _seed_demo_data():
         {"table_no": "3", "label": "同事朋友", "capacity": None, "x": None, "y": None},
     ])
     save_guests([
-        {"id": 1, "name": "张伟", "party_size": 3, "confirmed_size": 2, "family_names": "李娜,张小宝",
-         "table_no": "1", "invite_status": "已发送", "confirm_status": "已确认", "note": "叔叔一家"},
-        {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 0, "family_names": "刘强",
-         "table_no": "2", "invite_status": "已发送", "confirm_status": "待确认", "note": ""},
-        {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 0, "family_names": "",
-         "table_no": "", "invite_status": "未发送", "confirm_status": "待确认", "note": "大学同学"},
+        {"id": 1, "name": "张伟", "party_size": 3, "confirmed_size": 2,
+         "table_no": "1", "invite_status": "已发送", "category": "亲戚", "family": "张家"},
+        {"id": 2, "name": "王芳", "party_size": 2, "confirmed_size": 0,
+         "table_no": "2", "invite_status": "已发送", "category": "", "family": "王家"},
+        {"id": 3, "name": "陈静", "party_size": 1, "confirmed_size": 0,
+         "table_no": "", "invite_status": "未发送", "category": "大学同学", "family": "陈静一家"},
     ])
     save_config(dict(DEFAULT_CONFIG))
 
@@ -126,14 +125,12 @@ def save_guests(guests: list[dict]):
     with _conn() as c:
         c.execute("DELETE FROM guests")
         c.executemany(
-            "INSERT INTO guests (id, name, party_size, confirmed_size, family_names,"
-            " table_no, invite_status, confirm_status, note,"
-            " guest_type, group_id)"
-            " VALUES (:id, :name, :party_size, :confirmed_size, :family_names,"
-            " :table_no, :invite_status, :confirm_status, :note,"
-            " :guest_type, :group_id)",
-            [{**g, "guest_type": g.get("guest_type", "宾客及家属"),
-              "group_id": g.get("group_id")} for g in guests],
+            "INSERT INTO guests (id, name, party_size, confirmed_size,"
+            " table_no, invite_status, category, family)"
+            " VALUES (:id, :name, :party_size, :confirmed_size,"
+            " :table_no, :invite_status, :category, :family)",
+            [{**g, "category": g.get("category", ""),
+              "family": g.get("family", "")} for g in guests],
         )
 
 
@@ -245,12 +242,11 @@ def _migrate_legacy():
                 "id": int(cell(row, "ID")),
                 "name": str(cell(row, "姓名") or "").strip(),
                 "party_size": party_size,
-                "confirmed_size": int(float(conf_str)) if conf_str else party_size,
-                "family_names": str(cell(row, "家属姓名") or "").strip(),
+                "confirmed_size": int(float(conf_str)) if conf_str else 0,
                 "table_no": str(cell(row, "桌号") or "").strip(),
                 "invite_status": str(cell(row, "请帖状态") or cell(row, "邀请函状态") or "未发送").strip(),
-                "confirm_status": str(cell(row, "确认状态") or "待确认").strip(),
-                "note": str(cell(row, "备注") or "").strip(),
+                "category": str(cell(row, "备注") or "").strip(),
+                "family": f"{str(cell(row, '姓名') or '').strip()}一家",
             })
     save_tables(tables)
     save_guests(guests)
