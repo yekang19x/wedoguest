@@ -16,4 +16,4 @@ COPY --from=builder /app /app
 
 EXPOSE 8321
 
-CMD ["/app/.venv/bin/uvicorn", "app:app", "--app-dir", "backend", "--host", "0.0.0.0", "--port", "8321"]
+CMD ["sh", "-c", "mkdir -p /app/data && exec /app/.venv/bin/uvicorn app:app --app-dir backend --host 0.0.0.0 --port 8321"]
