@@ -250,13 +250,15 @@
     border-style: dashed; border-color: var(--line);
   }
   .table-dot .tno {
+    position: absolute; top: 15%; left: 15%;
     font-weight: 400; color: var(--primary-dark);
-    font-family: var(--font-display); line-height: 1; margin-top: -0.15em;
+    font-family: var(--font-display); line-height: 1;
   }
-  .table-dot .tocc { font-size: 0.7em; line-height: 1; color: var(--muted); }
+  .table-dot .tocc { font-size: 0.7em; line-height: 1; color: var(--muted); margin-top: 0.4em; }
   .table-dot .tlbl {
     font-size: 1em; color: var(--primary-dark); font-weight: 700; max-width: 90%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.15;
+    margin-top: 0.5em;
   }
   .table-dot.has-seats .tocc { color: var(--primary); }
   .table-dot.full .tocc { color: var(--gold); font-weight: 600; }
@@ -591,7 +593,7 @@
     </div>
     <table class="list" id="tables-table">
       <thead><tr>
-        <th>桌号</th><th>备注名</th><th>容纳人数</th><th>已坐 / 容量</th><th style="width:140px">操作</th>
+        <th>桌号</th><th>桌名</th><th>容纳人数</th><th>已坐 / 容量</th><th style="width:140px">操作</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -824,13 +826,13 @@ function circleHitsRect(r, cx, cy, rad) {
   return cx > r.x - rad && cx < r.x + r.w + rad && cy > r.y - rad && cy < r.y + r.h + rad;
 }
 
-// 桌号排序值：纯数字桌号按数值升序，其余（主桌等）排在数字桌之后
+// 桌号排序值：纯数字桌号按数值升序，其余排在数字桌之后
 function tableNoOrder(no) {
   return /^\d+$/.test(no) ? parseInt(no, 10) : Infinity;
 }
 
 // 给没有坐标的桌子自动找空位（避开半圆舞台/中线通道/已摆放的桌）：
-// 每行先排左区 L→R，再排右区 L→R（与左区镜像对称）；主桌 = 右区第一行最靠近过道的位置
+// 每行先排左区 L→R，再排右区 L→R（与左区镜像对称）
 function autoLayout(tables, cfg) {
   const D = cfg.table_diameter, rad = D / 2;
   const stage = stageRect(cfg), aisle = aisleRect(cfg);
@@ -838,11 +840,8 @@ function autoLayout(tables, cfg) {
   const minDist = Math.min(D + 0.25, step * 0.99);
   const placed = tables.filter(t => t.x != null && t.y != null).map(t => [t.x, t.y]);
   const pos = {};
-  const isMain = t => t.table_no === '主桌';
   const firstRowY = stage.h + rad + 0.6;
-  // 预生成对称槽位：左区 L→R → 右区 L→R（镜像），逐行重复
   const slots = [];
-  let mainSlotIdx = -1;
   for (let y = firstRowY; y <= cfg.venue_depth - margin; y += step) {
     const leftXs = [];
     for (let x = margin; x <= cfg.venue_width - margin; x += step) {
@@ -854,20 +853,9 @@ function autoLayout(tables, cfg) {
       .filter(x => x <= cfg.venue_width - margin
         && !circleHitsRect(stage, x, y, rad) && !circleHitsRect(aisle, x, y, rad))
       .sort((a, b) => a - b);
-    if (mainSlotIdx < 0 && rightXs.length) mainSlotIdx = slots.length;
     for (const x of rightXs) slots.push({ x, y });
   }
-  // 主桌固定放右区首位；其余按桌号升序填入剩余槽位
-  const pending = tables.filter(t => t.x == null || t.y == null);
-  const mainTable = pending.find(t => isMain(t));
-  if (mainTable && mainSlotIdx >= 0) {
-    const s = slots[mainSlotIdx];
-    if (!placed.some(([px, py]) => (px - s.x) ** 2 + (py - s.y) ** 2 < minDist ** 2)) {
-      pos[mainTable.table_no] = { x: s.x, y: s.y };
-      placed.push([s.x, s.y]);
-    }
-  }
-  const queue = pending.filter(t => !pos[t.table_no]).sort(compareTableNo);
+  const queue = tables.filter(t => t.x == null || t.y == null).sort(compareTableNo);
   for (const t of queue) {
     let found = null;
     for (const slot of slots) {
@@ -922,8 +910,8 @@ function renderFloor() {
         data-x="${p.x}" data-y="${p.y}"
         style="left:${px(p.x - d / 2)}px; top:${px(p.y - d / 2)}px;
                width:${px(d)}px; height:${px(d)}px; font-size:${fontBase}px">
-        <span class="tno" style="font-size:${fontBase}px">${esc(t.table_no)}</span>
-        ${t.label ? `<span class="tlbl" style="font-size:${fontBase}px">${esc(t.label)}</span>` : ''}
+        ${t.label ? `<span class="tno" style="font-size:${fontBase}px">${esc(t.table_no)}</span>
+        <span class="tlbl" style="font-size:${fontBase}px">${esc(t.label)}</span>` : `<span class="tlbl" style="font-size:${fontBase}px">${esc(t.table_no)}</span>`}
         <span class="tocc">${t.occupied}/${t.effective_capacity}</span>
         ${orbitHtml}
       </div>`;
@@ -1065,7 +1053,7 @@ function openTableDetail(tableNo) {
         ${t.occupied}/${t.effective_capacity} 人
       </span></h3>
     <div class="form-grid" style="margin-bottom:16px">
-      <div class="form-row"><label>备注名</label>
+      <div class="form-row"><label>桌名</label>
         <input id="td-label" value="${esc(t.label)}" placeholder="如：男方亲戚"></div>
       <div class="form-row"><label>容量（留空 = 默认 ${state.config.default_capacity}）</label>
         <input id="td-cap" type="number" min="1" value="${t.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
@@ -1271,7 +1259,7 @@ function newTableFieldsHtml(prefix) {
       <input id="${prefix}-new-no" value="${nextTableNo()}"></div>
     <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity}）</label>
       <input id="${prefix}-new-cap" type="number" min="1" placeholder="默认 ${state.config.default_capacity}"></div>
-    <div class="form-row full"><label>备注名</label>
+    <div class="form-row full"><label>桌名</label>
       <input id="${prefix}-new-label" placeholder="如：男方亲戚、大学同学"></div>
   </div>`;
 }
@@ -1549,7 +1537,7 @@ function openSwapModal(tableNo) {
   const opts = swapOptionsHtml(tableNo);
   showModal(`
     <h3>调换桌子：${esc(t.table_no)} 桌${t.label ? '｜' + esc(t.label) : ''}</h3>
-    <div class="sub" style="margin-bottom:12px">桌号与位置不变，调换两桌的备注名、容量和全部宾客。</div>
+    <div class="sub" style="margin-bottom:12px">桌号与位置不变，调换两桌的桌名、容量和全部宾客。</div>
     <div class="form-row"><label>与哪张桌调换</label>
       <select id="swap-target">${opts}</select></div>
     <div class="modal-actions">
@@ -1607,12 +1595,12 @@ function openTableModal(tableNo) {
       ${isNew ? `<div class="form-row"><label>数量</label>
         <input id="tm-count" type="number" min="1" max="50" value="1"
                oninput="onTableCountChange()"></div>` : ''}
-      <div class="form-row" id="tm-no-row"><label>桌号 *（如 1、2 或 主桌）</label>
+      <div class="form-row" id="tm-no-row"><label>桌号 *（如 1、2、3）</label>
         <input id="tm-no" value="${esc(t?.table_no ?? nextTableNo())}"></div>
       <div class="form-row full" id="tm-preview" style="display:none"></div>
       <div class="form-row"><label>容纳人数（留空 = 默认 ${state.config.default_capacity} 人）</label>
         <input id="tm-cap" type="number" min="1" value="${t?.capacity ?? ''}" placeholder="默认 ${state.config.default_capacity}"></div>
-      <div class="form-row full"><label>备注名（如：男方亲戚、大学同学）</label>
+      <div class="form-row full"><label>桌名（如：男方亲戚、大学同学）</label>
         <input id="tm-label" value="${esc(t?.label ?? '')}"></div>
     </div>
     <div class="modal-actions">
