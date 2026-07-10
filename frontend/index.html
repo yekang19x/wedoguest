@@ -298,6 +298,14 @@
   }
   .dist-guest {
     font-size: 12px; color: var(--ink-soft); line-height: 1.6;
+    cursor: grab; border-radius: 4px; padding: 1px 5px;
+    transition: all var(--transition); user-select: none;
+  }
+  .dist-guest:hover {
+    background: var(--primary-light); color: var(--primary-dark);
+  }
+  .dist-guest.dragging-guest {
+    opacity: .4;
   }
   .dist-guest .name { color: var(--ink); font-weight: 500; }
   .dist-guest .sz { color: var(--muted); }
@@ -750,7 +758,7 @@ function distTableHtml(t) {
   const guestsHtml = t.guests.length
     ? t.guests.map(g => {
         const cls = isDeclined(g) ? ' declined' : '';
-        return `<span class="dist-guest${cls}"><span class="name">${esc(g.name)}</span><span class="sz"> ${seatSize(g)}人</span></span>`;
+        return `<span class="dist-guest${cls}" draggable="true" data-gid="${g.id}"><span class="name">${esc(g.name)}</span><span class="sz"> ${seatSize(g)}人</span></span>`;
       }).join('')
     : '<span class="dist-empty">空桌</span>';
   return `<div class="dist-table">
@@ -963,12 +971,27 @@ function renderFloor() {
 }
 
 function bindFloorInteractions(venue, scale) {
-  // 未安排宾客名牌：HTML5 拖拽到圆桌入座
-  document.querySelectorAll('#unassigned-chips .chip').forEach(chip => {
-    chip.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/plain', chip.dataset.gid);
+  // 未安排宾客名牌 + 分布明细宾客：HTML5 拖拽到圆桌入座/换桌
+  document.querySelectorAll('#unassigned-chips .chip, .dist-guest[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', el.dataset.gid);
       e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging-guest');
     });
+    el.addEventListener('dragend', () => el.classList.remove('dragging-guest'));
+  });
+
+  // 拖到桌子以外的区域 → 移入未安排
+  venue.addEventListener('dragover', e => e.preventDefault());
+  venue.addEventListener('drop', e => {
+    if (e.target.closest('.table-dot')) return;
+    e.preventDefault();
+    const gid = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (!gid) return;
+    const g = guestById(gid);
+    if (!g || !g.table_no) return;
+    if (g.party_size > 1) openMoveModal(gid, '');
+    else doMove(gid, '', true);
   });
 
   venue.querySelectorAll('.table-dot').forEach(dot => {
