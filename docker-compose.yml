@@ -4,5 +4,5 @@ services:
     ports:
       - "${PORT:-8321}:8321"
     volumes:
-      - ./data:/app/data
+      - /data/wedoguest:/app/data
     restart: unless-stopped
